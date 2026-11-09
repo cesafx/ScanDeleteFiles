@@ -1,0 +1,114 @@
+.root {
+    -fx-font-family: "Segoe UI", "Inter", sans-serif;
+    -fx-font-size: 14px;
+    -fx-background-color: #f5f7fa;
+    -fx-text-fill: #172033;
+}
+
+.application-shell {
+    -fx-background-color: #f5f7fa;
+}
+
+.sidebar {
+    -fx-pref-width: 265px;
+    -fx-background-color: #18243a;
+}
+
+.product-name {
+    -fx-text-fill: white;
+    -fx-font-size: 23px;
+    -fx-font-weight: bold;
+}
+
+.product-subtitle,
+.sidebar-note {
+    -fx-text-fill: #b9c5d8;
+}
+
+.sidebar .separator .line {
+    -fx-border-color: #33445f;
+    -fx-border-width: 1 0 0 0;
+}
+
+.navigation-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #dce4ef;
+    -fx-alignment: center-left;
+    -fx-padding: 12 14;
+    -fx-background-radius: 8;
+    -fx-cursor: hand;
+}
+
+.navigation-button:hover {
+    -fx-background-color: #253651;
+}
+
+.navigation-button:selected {
+    -fx-background-color: #2f67d8;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+.content-scroll,
+.content-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
+.screen-content {
+    -fx-max-width: 820px;
+}
+
+.eyebrow {
+    -fx-text-fill: #2f67d8;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.screen-title {
+    -fx-font-size: 34px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #172033;
+}
+
+.screen-description {
+    -fx-font-size: 16px;
+    -fx-text-fill: #526079;
+}
+
+.field-label {
+    -fx-font-weight: bold;
+    -fx-text-fill: #26344d;
+}
+
+.text-field,
+.date-picker {
+    -fx-background-color: white;
+    -fx-border-color: #ccd4e0;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-padding: 9;
+}
+
+.button {
+    -fx-background-radius: 6;
+    -fx-padding: 10 16;
+}
+
+.extension-list,
+.choice-panel {
+    -fx-background-color: white;
+    -fx-border-color: #d8dee8;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 16;
+}
+
+.primary-action {
+    -fx-background-color: #2f67d8;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+.pending-note {
+    -fx-text-fill: #6f7b90;
+}
