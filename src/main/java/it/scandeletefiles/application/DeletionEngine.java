@@ -142,6 +142,7 @@ public final class DeletionEngine implements DeletionApplicationService {
 
     private static final class DeletionContext {
         int controllate;
+        int elaborate;
         int daEliminare;
         int cestinati;
         int eliminatiPermanentemente;
@@ -175,6 +176,7 @@ public final class DeletionEngine implements DeletionApplicationService {
                         context.perFormat.merge(formatOf(row), 1, Integer::sum);
                     }
                 }
+                notifyProgress(progress(context));
                 for (int i = 0; i < rows.size(); i++) {
                     if (cancelled.get()) {
                         for (int j = i; j < rows.size(); j++) {
@@ -184,8 +186,8 @@ public final class DeletionEngine implements DeletionApplicationService {
                         break;
                     }
                     context.outcomes.add(processRow(rows.get(i), context));
-                    notifyProgress(OperationProgress.indeterminate(i + 1,
-                            "Righe elaborate: " + (i + 1) + " / " + rows.size()));
+                    context.elaborate++;
+                    notifyProgress(progress(context));
                 }
                 OperationStatus status = cancelled.get()
                         ? OperationStatus.CANCELLED : OperationStatus.COMPLETED;
@@ -403,6 +405,7 @@ public final class DeletionEngine implements DeletionApplicationService {
             lines.add("Durata: " + String.format(Locale.ITALIAN, "%.3f s",
                     (end.toEpochMilli() - start.toEpochMilli()) / 1000.0));
             lines.add("Righe controllate: " + context.controllate);
+            lines.add("Righe elaborate: " + context.elaborate);
             lines.add("Righe Da eliminare: " + context.daEliminare);
             lines.add("File cestinati: " + context.cestinati);
             lines.add("File eliminati permanentemente: " + context.eliminatiPermanentemente);
@@ -443,9 +446,21 @@ public final class DeletionEngine implements DeletionApplicationService {
                 case COMPLETED -> "Cancellazione completata: " + context.cestinati + " cestinati, "
                         + context.eliminatiPermanentemente + " eliminati definitivamente, "
                         + context.saltate + " saltati, " + context.errori + " errori";
-                case CANCELLED -> "Cancellazione annullata";
+                case CANCELLED -> "Cancellazione annullata: " + context.elaborate + " / "
+                        + context.controllate + " righe elaborate, " + context.cestinati + " cestinati, "
+                        + context.eliminatiPermanentemente + " eliminati definitivamente, "
+                        + context.saltate + " saltati, " + context.errori + " errori";
                 case FAILED -> "Cancellazione fallita";
             };
+        }
+
+        private static OperationProgress progress(DeletionContext context) {
+            return OperationProgress.determinate(context.elaborate, context.controllate,
+                    "Righe elaborate: " + context.elaborate + " / " + context.controllate
+                            + "; cestinati: " + context.cestinati
+                            + "; eliminati definitivamente: " + context.eliminatiPermanentemente
+                            + "; saltati: " + context.saltate
+                            + "; errori: " + context.errori);
         }
 
         private static Path reportPath(Path manifest) {

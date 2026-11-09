@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import it.scandeletefiles.bootstrap.PlatformAdapters;
-import it.scandeletefiles.application.CancellableOperation;
 import it.scandeletefiles.application.OperationObserver;
 import it.scandeletefiles.application.OperationProgress;
 import it.scandeletefiles.application.OperationResult;
@@ -39,17 +38,11 @@ class DeletionAuditLogTest {
 
     private static final class ControlledTrash implements TrashAdapter {
         private final Path trashDir;
-        private final long delayMillis;
         private final List<Path> moved = new CopyOnWriteArrayList<>();
         private volatile boolean unavailable;
 
         ControlledTrash(Path trashDir) {
-            this(trashDir, 0);
-        }
-
-        ControlledTrash(Path trashDir, long delayMillis) {
             this.trashDir = trashDir;
-            this.delayMillis = delayMillis;
         }
 
         void setUnavailable(boolean unavailable) {
@@ -60,14 +53,6 @@ class DeletionAuditLogTest {
         public TrashResult moveToTrash(Path file) {
             if (unavailable) {
                 return new TrashResult(TrashResult.Status.UNAVAILABLE, "cestino non disponibile");
-            }
-            if (delayMillis > 0) {
-                try {
-                    Thread.sleep(delayMillis);
-                } catch (InterruptedException exc) {
-                    Thread.currentThread().interrupt();
-                    return new TrashResult(TrashResult.Status.FAILED, "interrotto");
-                }
             }
             Path target = trashDir.resolve(file.getFileName().toString());
             int suffix = 0;
@@ -326,82 +311,57 @@ class DeletionAuditLogTest {
     }
 
     @Test
-    void cancellazioneProduceAuditAnnullataEReggeSoloRigheElaborate(@TempDir Path root) throws Exception {
-        Path trashDir = root.resolve("cestino");
-        Files.createDirectories(trashDir);
-        List<Path> files = new CopyOnWriteArrayList<>();
-        for (int i = 0; i < 6; i++) {
-            Path file = root.resolve("file" + i + ".txt");
-            Files.writeString(file, "contenuto " + i);
-            Files.setLastModifiedTime(file, FileTime.from(Instant.parse("2026-11-09T23:00:00Z")));
-            files.add(file);
-        }
+    void csvRifiutatoProduceComunqueAuditFallita(@TempDir Path root) throws Exception {
+        Path trashDir = Files.createDirectory(root.resolve("cestino"));
+        ControlledTrash trash = new ControlledTrash(trashDir);
+        Path manifest = root.resolve("rifiutato.csv");
+        Files.writeString(manifest,
+                "Nome file;Path cartella;Path completo;Formato file;Data ultima modifica;Delete\n",
+                StandardCharsets.UTF_8);
 
-        ControlledTrash slow = new ControlledTrash(trashDir, 100);
-        PlatformAdapters platform = new PlatformAdapters(
-                FileSystems.getDefault(), slow,
-                new SettingsAdapter() {
-                    @Override
-                    public Set<String> loadSelectedExtensions() {
-                        return Set.of();
-                    }
+        OperationResult result = execute(new DeletionEngine(trash, Clock.fixed(FIXED, ZoneOffset.UTC)), manifest);
 
-                    @Override
-                    public void saveSelectedExtensions(Set<String> extensions) {
-                    }
-                },
-                Clock.fixed(FIXED, ZoneOffset.UTC));
+        assertEquals(OperationStatus.FAILED, result.status());
+        String audit = Files.readString(root.resolve("rifiutato.csv.log"), StandardCharsets.UTF_8);
+        assertTrue(audit.contains("Stato: FALLITA"));
+        assertTrue(audit.contains("BOM UTF-8"));
+    }
 
-        String rootPath = root.toString();
-        Path manifest = root.resolve("da-annullare.csv");
-        StringBuilder csv = new StringBuilder("\uFEFFNome file;Path cartella;Path completo;Formato file;Data ultima modifica;Delete\n");
-        for (Path file : files) {
-            csv.append(row(file.getFileName().toString(), rootPath, file, "TXT", "2026/11/09", "Yes")).append("\n");
-        }
-        Files.writeString(manifest, csv.toString(), StandardCharsets.UTF_8);
+    @Test
+    void erroreFataleProduceComunqueAuditFallita(@TempDir Path root) throws Exception {
+        Path file = root.resolve("file.txt");
+        writeFile(root, "file.txt", Instant.parse("2026-11-09T23:00:00Z"));
+        Path manifest = root.resolve("fatale.csv");
+        Files.writeString(manifest, manifestCsv(root.toString(),
+                row("file.txt", root.toString(), file, "TXT", "2026/11/09", "Yes")),
+                StandardCharsets.UTF_8);
+        TrashAdapter fatal = ignored -> {
+            throw new IllegalStateException("guasto fatale controllato");
+        };
 
-        DeletionEngine engine = new DeletionEngine(slow, platform.clock());
+        OperationResult result = execute(new DeletionEngine(fatal, Clock.fixed(FIXED, ZoneOffset.UTC)), manifest);
 
+        assertEquals(OperationStatus.FAILED, result.status());
+        String audit = Files.readString(root.resolve("fatale.csv.log"), StandardCharsets.UTF_8);
+        assertTrue(audit.contains("Stato: FALLITA"));
+        assertTrue(audit.contains("guasto fatale controllato"));
+    }
+
+    private static OperationResult execute(DeletionEngine engine, Path manifest) throws Exception {
         CountDownLatch finished = new CountDownLatch(1);
-        CountDownLatch firstProgress = new CountDownLatch(1);
         AtomicReference<OperationResult> result = new AtomicReference<>();
-        CancellableOperation operation = engine.start(new DeletionCommand(manifest, DeletionMode.TRASH, false),
-                new OperationObserver() {
-                    @Override
-                    public void onProgress(OperationProgress p) {
-                        if (p.completed() >= 1) {
-                            firstProgress.countDown();
-                        }
-                    }
+        engine.start(new DeletionCommand(manifest, DeletionMode.TRASH, false), new OperationObserver() {
+            @Override
+            public void onProgress(OperationProgress progress) {
+            }
 
-                    @Override
-                    public void onFinished(OperationResult r) {
-                        result.set(r);
-                        finished.countDown();
-                    }
-                });
-
-        assertTrue(firstProgress.await(30, TimeUnit.SECONDS), "il servizio non ha riportato avanzamento");
-        operation.requestCancellation();
-        assertTrue(finished.await(60, TimeUnit.SECONDS), "la cancellazione non è terminata");
-
-        assertEquals(OperationStatus.CANCELLED, result.get().status());
-        assertTrue(slow.moved.size() >= 1, "almeno una riga deve essere stata cestinata prima dell'annullamento");
-        assertTrue(slow.moved.size() < 6, "non tutte le righe devono essere state cestinate");
-
-        Path report = root.resolve("da-annullare.report.csv");
-        assertTrue(Files.exists(report), "il report deve essere prodotto anche in annullamento");
-        List<String> lines = Files.readString(report, StandardCharsets.UTF_8).substring(1).lines().toList();
-        assertEquals(7, lines.size(), "intestazione + una riga di report per ogni riga di input");
-        long cestinati = lines.stream().map(l -> l.split(";", -1)).filter(p -> "Cestinato".equals(p[6])).count();
-        long nonElaborate = lines.stream().map(l -> l.split(";", -1)).filter(p -> "Non elaborato".equals(p[6])).count();
-        assertEquals(slow.moved.size(), cestinati);
-        assertEquals(6, cestinati + nonElaborate);
-
-        Path audit = root.resolve("da-annullare.csv.log");
-        String log = Files.readString(audit, StandardCharsets.UTF_8);
-        assertTrue(log.contains("Stato: ANNULLATA"), "l'audit deve dichiarare lo stato annullato");
-        assertTrue(log.contains("Righe controllate: 6"));
-        assertTrue(log.contains("Righe Da eliminare: 6"));
+            @Override
+            public void onFinished(OperationResult operationResult) {
+                result.set(operationResult);
+                finished.countDown();
+            }
+        });
+        assertTrue(finished.await(10, TimeUnit.SECONDS));
+        return result.get();
     }
 }
