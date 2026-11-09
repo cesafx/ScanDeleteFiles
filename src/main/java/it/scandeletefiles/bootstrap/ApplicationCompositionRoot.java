@@ -19,13 +19,14 @@ public record ApplicationCompositionRoot(
     }
 
     public static ApplicationCompositionRoot create() {
+        PlatformAdapters platform = PlatformAdapters.currentPlatform();
         return new ApplicationCompositionRoot(
                 new NavigationModel(),
-                ApplicationServices.pendingImplementation(),
-                PlatformAdapters.currentPlatform());
+                ApplicationServices.create(platform),
+                platform);
     }
 
     public Parent createView() {
-        return new ApplicationShell(navigation, new ScanView(), new DeletionView()).createView();
+        return new ApplicationShell(navigation, new ScanView(services.scan()), new DeletionView()).createView();
     }
 }
