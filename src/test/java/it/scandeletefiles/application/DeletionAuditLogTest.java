@@ -315,12 +315,13 @@ class DeletionAuditLogTest {
         Path report = root.resolve("bloccato.report.csv");
         List<String> lines = Files.readString(report, StandardCharsets.UTF_8).substring(1).lines().toList();
         assertEquals(2, lines.size());
-        assertEquals("Errore", lines.get(1).split(";", -1)[6]);
+        assertEquals("Saltato", lines.get(1).split(";", -1)[6]);
         assertTrue(lines.get(1).contains("cestino non disponibile"));
 
         Path audit = root.resolve("bloccato.csv.log");
         String log = Files.readString(audit, StandardCharsets.UTF_8);
-        assertTrue(log.contains("Errori: 1"));
+        assertTrue(log.contains("Righe saltate: 1"));
+        assertTrue(log.contains("Errori: 0"));
         assertTrue(log.contains("File cestinati: 0"));
     }
 

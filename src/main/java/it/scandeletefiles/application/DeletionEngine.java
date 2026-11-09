@@ -258,15 +258,22 @@ public final class DeletionEngine implements DeletionApplicationService {
                                 : result.detail();
                         return new RowOutcome(ESITO_CESTINATO, detail);
                     }
+                    if (result.status() == TrashResult.Status.UNAVAILABLE) {
+                        context.saltate++;
+                        String detail = result.detail().isBlank()
+                                ? "Cestino non disponibile"
+                                : result.detail();
+                        return new RowOutcome(ESITO_SALTATO, detail + "; file conservato");
+                    }
                     context.errori++;
                     return new RowOutcome(ESITO_ERRORE,
                             "Impossibile spostare nel cestino: " + result.detail());
                 }
                 case PERMANENT -> {
                     if (!command.permanentDeletionConfirmed()) {
-                        context.errori++;
-                        return new RowOutcome(ESITO_ERRORE,
-                                "Conferma obbligatoria per la cancellazione permanente");
+                        context.saltate++;
+                        return new RowOutcome(ESITO_SALTATO,
+                                "Cancellazione permanente non confermata: file conservato");
                     }
                     try {
                         Files.delete(file);
