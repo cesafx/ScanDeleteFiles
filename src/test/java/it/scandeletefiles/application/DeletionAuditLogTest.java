@@ -329,17 +329,20 @@ class DeletionAuditLogTest {
     }
 
     @Test
-    void erroreFataleDopoUnaRigaMantieneConteggiEdEffettiRealiNellAudit(@TempDir Path root)
+    void erroreFataleDopoUnaRigaProduceReportEAuditConEffettiReali(@TempDir Path root)
             throws Exception {
         Path trashDir = Files.createDirectory(root.resolve("cestino"));
         Path completato = root.resolve("completato.txt");
         Path fatale = root.resolve("fatale.txt");
+        Path nonElaborato = root.resolve("non-elaborato.txt");
         writeFile(root, "completato.txt", Instant.parse("2026-11-09T23:00:00Z"));
         writeFile(root, "fatale.txt", Instant.parse("2026-11-09T23:00:00Z"));
+        writeFile(root, "non-elaborato.txt", Instant.parse("2026-11-09T23:00:00Z"));
         Path manifest = root.resolve("fatale.csv");
         Files.writeString(manifest, manifestCsv(root.toString(),
                 row("completato.txt", root.toString(), completato, "TXT", "2026/11/09", "Yes"),
-                row("fatale.txt", root.toString(), fatale, "TXT", "2026/11/09", "Yes")),
+                row("fatale.txt", root.toString(), fatale, "TXT", "2026/11/09", "Yes"),
+                row("non-elaborato.txt", root.toString(), nonElaborato, "TXT", "2026/11/09", "Yes")),
                 StandardCharsets.UTF_8);
         AtomicInteger calls = new AtomicInteger();
         TrashAdapter fatalAfterFirst = file -> {
@@ -360,11 +363,21 @@ class DeletionAuditLogTest {
         assertEquals(OperationStatus.FAILED, result.status());
         assertFalse(Files.exists(completato), "la prima riga già conclusa deve restare cestinata");
         assertTrue(Files.exists(fatale), "la riga del guasto fatale non deve risultare cancellata");
+        assertTrue(Files.exists(nonElaborato), "le righe successive al guasto non devono essere avviate");
+
+        List<String> report = Files.readString(root.resolve("fatale.report.csv"), StandardCharsets.UTF_8)
+                .substring(1).lines().toList();
+        assertEquals(4, report.size());
+        assertEquals("Cestinato", report.get(1).split(";", -1)[6]);
+        assertEquals("Errore", report.get(2).split(";", -1)[6]);
+        assertTrue(report.get(2).split(";", -1)[7].contains("guasto fatale controllato"));
+        assertEquals("Non elaborato", report.get(3).split(";", -1)[6]);
+
         String audit = Files.readString(root.resolve("fatale.csv.log"), StandardCharsets.UTF_8);
         assertTrue(audit.contains("Stato: FALLITA"));
-        assertTrue(audit.contains("Righe controllate: 2"));
-        assertTrue(audit.contains("Righe elaborate: 1"));
-        assertTrue(audit.contains("Righe Da eliminare: 2"));
+        assertTrue(audit.contains("Righe controllate: 3"));
+        assertTrue(audit.contains("Righe elaborate: 2"));
+        assertTrue(audit.contains("Righe Da eliminare: 3"));
         assertTrue(audit.contains("File cestinati: 1"));
         assertTrue(audit.contains("Errori: 1"));
         assertTrue(audit.contains("TXT: 100,0%"));

@@ -149,6 +149,7 @@ public final class DeletionEngine implements DeletionApplicationService {
         int saltate;
         int errori;
         final Map<String, Integer> perFormat = new TreeMap<>();
+        final List<CsvRow> rows = new ArrayList<>();
         final List<RowOutcome> outcomes = new ArrayList<>();
     }
 
@@ -168,32 +169,35 @@ public final class DeletionEngine implements DeletionApplicationService {
             DeletionContext context = new DeletionContext();
             try {
                 notifyProgress(OperationProgress.indeterminate(0, "Avvio cancellazione"));
-                List<CsvRow> rows = readManifest(command.manifest());
-                context.controllate = rows.size();
-                for (CsvRow row : rows) {
+                context.rows.addAll(readManifest(command.manifest()));
+                context.controllate = context.rows.size();
+                for (CsvRow row : context.rows) {
                     if ("Yes".equalsIgnoreCase(row.deleteValue())) {
                         context.daEliminare++;
                         context.perFormat.merge(formatOf(row), 1, Integer::sum);
                     }
                 }
                 notifyProgress(progress(context));
-                for (int i = 0; i < rows.size(); i++) {
+                for (int i = 0; i < context.rows.size(); i++) {
                     if (cancelled.get()) {
-                        for (int j = i; j < rows.size(); j++) {
+                        for (int j = i; j < context.rows.size(); j++) {
                             context.outcomes.add(new RowOutcome(ESITO_NON_ELABORATO,
                                     "Operazione annullata prima dell'elaborazione"));
                         }
                         break;
                     }
-                    context.outcomes.add(processRow(rows.get(i), context));
+                    context.outcomes.add(processRow(context.rows.get(i), context));
                     context.elaborate++;
                     notifyProgress(progress(context));
                 }
-                OperationStatus status = cancelled.get()
+                boolean cancellationRequested = cancelled.get();
+                OperationStatus status = cancellationRequested
                         ? OperationStatus.CANCELLED : OperationStatus.COMPLETED;
-                writeReport(command.manifest(), rows, context.outcomes);
+                String note = cancellationRequested
+                        ? "Annullata dall'utente prima del completamento" : null;
+                writeReport(command.manifest(), context.rows, context.outcomes);
                 writeAudit(command.manifest(), status, start, clock.instant(), context,
-                        cancelled.get() ? "Annullata dall'utente prima del completamento" : null);
+                        note);
                 notifyFinished(new OperationResult(status, messaggioFinale(status, context)));
             } catch (Exception exc) {
                 failed(start, context, exc);
@@ -493,14 +497,38 @@ public final class DeletionEngine implements DeletionApplicationService {
 
         private void failed(Instant start, DeletionContext context, Exception exc) {
             context.errori++;
+            completeFailureOutcomes(context, exc);
+            String note = exc.getMessage();
+            if (!context.rows.isEmpty()) {
+                try {
+                    writeReport(command.manifest(), context.rows, context.outcomes);
+                } catch (Exception reportExc) {
+                    note = note + "; impossibile generare il report: " + reportExc.getMessage();
+                }
+            }
             try {
                 writeAudit(command.manifest(), OperationStatus.FAILED, start, clock.instant(), context,
-                        exc.getMessage());
+                        note);
             } catch (IOException ioExc) {
                 // il log di audit non \u00e8 scrivibile: l'esito \u00e8 comunque segnato come fallito
             }
             notifyFinished(new OperationResult(OperationStatus.FAILED,
                     "Cancellazione fallita: " + exc.getMessage()));
+        }
+
+        private static void completeFailureOutcomes(DeletionContext context, Exception exc) {
+            int nextRow = context.outcomes.size();
+            if (nextRow < context.rows.size()) {
+                context.outcomes.add(new RowOutcome(ESITO_ERRORE,
+                        "Errore fatale durante l'elaborazione: " + exc.getMessage()));
+                context.elaborate++;
+                nextRow++;
+            }
+            while (nextRow < context.rows.size()) {
+                context.outcomes.add(new RowOutcome(ESITO_NON_ELABORATO,
+                        "Operazione interrotta da un errore fatale prima dell'elaborazione"));
+                nextRow++;
+            }
         }
 
         private void notifyProgress(OperationProgress progress) {
