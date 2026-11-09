@@ -7,6 +7,7 @@ import static it.scandeletefiles.ui.ViewSupport.scrollable;
 import static it.scandeletefiles.ui.ViewSupport.section;
 
 import it.scandeletefiles.application.CancellableOperation;
+import it.scandeletefiles.application.ExtensionPreferences;
 import it.scandeletefiles.application.OperationObserver;
 import it.scandeletefiles.application.OperationProgress;
 import it.scandeletefiles.application.OperationResult;
@@ -18,6 +19,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -44,6 +46,7 @@ public final class ScanView implements ScreenView {
     private static final DateTimeFormatter PROPOSED_NAME_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
 
     private final ScanApplicationService scanService;
+    private final ExtensionPreferences extensionsPrefs;
     private TextField root;
     private DatePicker threshold;
     private FlowPane extensions;
@@ -54,8 +57,9 @@ public final class ScanView implements ScreenView {
     private CancellableOperation currentOperation;
     private Label status;
 
-    public ScanView(ScanApplicationService scanService) {
+    public ScanView(ScanApplicationService scanService, ExtensionPreferences extensionsPrefs) {
         this.scanService = Objects.requireNonNull(scanService, "scanService");
+        this.extensionsPrefs = Objects.requireNonNull(extensionsPrefs, "extensionsPrefs");
     }
 
     @Override
@@ -71,12 +75,15 @@ public final class ScanView implements ScreenView {
         threshold.setMaxWidth(Double.MAX_VALUE);
 
         extensions = new FlowPane(8, 8);
+        Set<String> persisted = extensionsPrefs.selectedExtensions();
         DEFAULT_EXTENSIONS.stream()
-                .map(CheckBox::new)
-                .forEach(checkBox -> {
-                    checkBox.setSelected(true);
-                    extensions.getChildren().add(checkBox);
-                });
+                .map(extension -> {
+                    CheckBox checkBox = new CheckBox(extension);
+                    checkBox.setSelected(persisted.contains(extension));
+                    checkBox.setOnAction(event -> persistSelection());
+                    return checkBox;
+                })
+                .forEach(checkBox -> extensions.getChildren().add(checkBox));
         extensions.getStyleClass().add("extension-list");
 
         includeHidden = new CheckBox("Includi file nascosti");
@@ -168,5 +175,14 @@ public final class ScanView implements ScreenView {
         });
 
         currentOperation = scanService.start(command, ui);
+    }
+
+    private void persistSelection() {
+        Set<String> selected = extensions.getChildren().stream()
+                .map(CheckBox.class::cast)
+                .filter(CheckBox::isSelected)
+                .map(checkBox -> checkBox.getText().toUpperCase(Locale.ROOT))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        extensionsPrefs.replaceSelection(selected);
     }
 }

@@ -1,12 +1,13 @@
 package it.scandeletefiles.bootstrap;
 
+import it.scandeletefiles.platform.FileSettingsAdapter;
 import it.scandeletefiles.platform.SettingsAdapter;
 import it.scandeletefiles.platform.TrashAdapter;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Objects;
-import java.util.Set;
 
 public record PlatformAdapters(
         FileSystem fileSystem,
@@ -25,17 +26,8 @@ public record PlatformAdapters(
         TrashAdapter trash = file -> {
             throw new UnsupportedOperationException("L'adattatore del cestino non è ancora implementato");
         };
-        SettingsAdapter settings = new SettingsAdapter() {
-            @Override
-            public Set<String> loadSelectedExtensions() {
-                throw new UnsupportedOperationException("La persistenza delle preferenze non è ancora implementata");
-            }
-
-            @Override
-            public void saveSelectedExtensions(Set<String> extensions) {
-                throw new UnsupportedOperationException("La persistenza delle preferenze non è ancora implementata");
-            }
-        };
+        Path configPath = Path.of(System.getProperty("user.home"), ".scandeletefiles", "selected-extensions.txt");
+        SettingsAdapter settings = new FileSettingsAdapter(configPath);
         return new PlatformAdapters(FileSystems.getDefault(), trash, settings, Clock.systemDefaultZone());
     }
 }

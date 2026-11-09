@@ -1,5 +1,6 @@
 package it.scandeletefiles.bootstrap;
 
+import it.scandeletefiles.application.ExtensionPreferences;
 import it.scandeletefiles.navigation.NavigationModel;
 import it.scandeletefiles.ui.ApplicationShell;
 import it.scandeletefiles.ui.DeletionView;
@@ -27,6 +28,7 @@ public record ApplicationCompositionRoot(
     }
 
     public Parent createView() {
-        return new ApplicationShell(navigation, new ScanView(services.scan()), new DeletionView()).createView();
+        ExtensionPreferences extensions = new ExtensionPreferences(platform.settings());
+        return new ApplicationShell(navigation, new ScanView(services.scan(), extensions), new DeletionView()).createView();
     }
 }
