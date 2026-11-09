@@ -6,6 +6,7 @@ import static it.scandeletefiles.ui.ViewSupport.screenContent;
 import static it.scandeletefiles.ui.ViewSupport.scrollable;
 import static it.scandeletefiles.ui.ViewSupport.section;
 
+import it.scandeletefiles.application.CancellableOperation;
 import it.scandeletefiles.application.OperationObserver;
 import it.scandeletefiles.application.OperationProgress;
 import it.scandeletefiles.application.OperationResult;
@@ -49,6 +50,8 @@ public final class ScanView implements ScreenView {
     private CheckBox includeHidden;
     private TextField destination;
     private Button action;
+    private Button cancel;
+    private CancellableOperation currentOperation;
     private Label status;
 
     public ScanView(ScanApplicationService scanService) {
@@ -85,6 +88,15 @@ public final class ScanView implements ScreenView {
         action.setDisable(true);
         action.setId("avvia-scansione");
         action.setOnAction(event -> startScan());
+
+        cancel = new Button("Annulla");
+        cancel.setDisable(true);
+        cancel.setId("annulla-scansione");
+        cancel.setOnAction(event -> {
+            if (currentOperation != null) {
+                currentOperation.requestCancellation();
+            }
+        });
 
         status = new Label();
         status.setId("scan-status");
@@ -134,7 +146,9 @@ public final class ScanView implements ScreenView {
                 includeHidden.isSelected(),
                 Path.of(destination.getText()));
 
+        currentOperation = null;
         action.setDisable(true);
+        cancel.setDisable(false);
         status.setText("Scansione in corso...");
 
         OperationObserver ui = OperationObserver.dispatching(Platform::runLater, new OperationObserver() {
@@ -145,12 +159,14 @@ public final class ScanView implements ScreenView {
 
             @Override
             public void onFinished(OperationResult result) {
+                currentOperation = null;
                 action.setDisable(false);
+                cancel.setDisable(true);
                 String suffix = result.status() == OperationStatus.COMPLETED ? " — manifest scritto" : "";
                 status.setText(result.message() + suffix);
             }
         });
 
-        scanService.start(command, ui);
+        currentOperation = scanService.start(command, ui);
     }
 }

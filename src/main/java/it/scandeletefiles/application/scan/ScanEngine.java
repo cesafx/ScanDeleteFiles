@@ -113,7 +113,10 @@ public final class ScanEngine implements ScanApplicationService {
                             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs)
                                     throws IOException {
                                 checkCancelled();
-                                if (isSymbolicLink(dir)) {
+                                // I collegamenti simbolici, le junction e i punti di riparsione non
+                                // vengono attraversati: con attrs letti senza seguire il link,
+                                // non sono né directory né link simbolici e quindi si escludono qui.
+                                if (attrs.isSymbolicLink() || !attrs.isDirectory()) {
                                     return FileVisitResult.SKIP_SUBTREE;
                                 }
                                 if (!command.includeHidden() && Files.isHidden(dir)) {
@@ -126,7 +129,9 @@ public final class ScanEngine implements ScanApplicationService {
                             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
                                     throws IOException {
                                 checkCancelled();
-                                if (isSymbolicLink(file) || !attrs.isRegularFile()) {
+                                // I link simbolici (e le junction esposte come rilegature di
+                                // directory) non sono file ordinari: non entrano nel manifest.
+                                if (attrs.isSymbolicLink() || !attrs.isRegularFile()) {
                                     return FileVisitResult.CONTINUE;
                                 }
                                 if (!command.includeHidden() && Files.isHidden(file)) {
@@ -315,10 +320,6 @@ public final class ScanEngine implements ScanApplicationService {
                 return "";
             }
             return name.substring(dot + 1).toUpperCase(Locale.ROOT);
-        }
-
-        private static boolean isSymbolicLink(Path file) throws IOException {
-            return Files.isSymbolicLink(file);
         }
 
         private void notifyProgress(OperationProgress progress) {
