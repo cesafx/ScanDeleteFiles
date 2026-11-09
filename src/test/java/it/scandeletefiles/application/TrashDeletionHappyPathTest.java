@@ -178,4 +178,58 @@ class TrashDeletionHappyPathTest {
         assertTrue(log.contains("Percentuali per formato:"), "l'audit deve riportare le percentuali per formato");
         assertTrue(log.contains("TXT: 100,0%"), "l'audit deve riportare la percentuale del formato TXT");
     }
+
+    @Test
+    void rigaIncoerenteNonVieneCancellataERegistrataComeErrore(@TempDir Path root) throws Exception {
+        Path trashDir = root.resolve("cestino");
+        Files.createDirectories(trashDir);
+
+        Path file = root.resolve("real.txt");
+        Files.writeString(file, "contenuto");
+        Files.setLastModifiedTime(file, FileTime.from(Instant.parse("2026-11-09T23:00:00Z")));
+
+        String rootPath = root.toString();
+        String csv = "\uFEFF"
+                + "Nome file;Path cartella;Path completo;Formato file;Data ultima modifica;Delete\n"
+                + "real.txt;" + rootPath + ";" + root.resolve("altro.txt") + ";TXT;2026/11/09;yes\n";
+        Path manifest = root.resolve("manifest.csv");
+        Files.writeString(manifest, csv, StandardCharsets.UTF_8);
+
+        PlatformAdapters platform = platform(trashDir, new ControlledTrash(trashDir));
+        ControlledTrash trash = (ControlledTrash) platform.trash();
+        DeletionEngine engine = new DeletionEngine(trash, platform.clock());
+
+        CountDownLatch finished = new CountDownLatch(1);
+        AtomicReference<OperationResult> result = new AtomicReference<>();
+        engine.start(new DeletionCommand(manifest, DeletionMode.TRASH, false), new OperationObserver() {
+            @Override
+            public void onProgress(OperationProgress p) {
+            }
+
+            @Override
+            public void onFinished(OperationResult r) {
+                result.set(r);
+                finished.countDown();
+            }
+        });
+
+        assertTrue(finished.await(30, TimeUnit.SECONDS), "la cancellazione non è terminata");
+        assertEquals(OperationStatus.COMPLETED, result.get().status());
+
+        // La riga incoerente non produce cancellazione né spostamento nel cestino
+        assertTrue(Files.exists(file), "la riga incoerente non deve cancellare il file");
+        assertTrue(trash.moved.isEmpty(), "nessun file deve essere spostato nel cestino");
+
+        Path report = root.resolve("manifest.report.csv");
+        String content = Files.readString(report, StandardCharsets.UTF_8);
+        List<String> lines = content.substring(1).lines().toList();
+        assertEquals(2, lines.size(), "header del report più una sola riga di esito");
+        String[] parts = lines.get(1).split(";", -1);
+        assertEquals("Errore", parts[6], "la riga incoerente deve avere Esito = Errore");
+
+        Path audit = root.resolve("manifest.csv.log");
+        String log = Files.readString(audit, StandardCharsets.UTF_8);
+        assertTrue(log.contains("Righe Da eliminare: 1"), "l'audit conta la riga Yes tra le da eliminare");
+        assertTrue(log.contains("Errori: 1"), "l'audit conta la riga incoerente come errore");
+    }
 }

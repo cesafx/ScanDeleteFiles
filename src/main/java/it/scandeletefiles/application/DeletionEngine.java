@@ -102,6 +102,39 @@ public final class DeletionEngine implements DeletionApplicationService {
         boolean malformed() {
             return fields.length != COLUMNS.length;
         }
+
+        boolean coerente() {
+            if (malformed()) {
+                return false;
+            }
+            String nome = fields[0].trim();
+            String cartella = fields[1].trim();
+            String completo = fields[2].trim();
+            String formato = fields[3].trim();
+            if (nome.isEmpty() || completo.isBlank()) {
+                return false;
+            }
+            Path file = Path.of(completo);
+            if (!nome.equals(file.getFileName().toString())) {
+                return false;
+            }
+            Path atteso = Path.of(cartella).resolve(nome).normalize();
+            if (!atteso.toString().equals(completo)) {
+                return false;
+            }
+            if (!formato.isEmpty()) {
+                String estensione = estensioneDi(nome);
+                if (!estensione.equalsIgnoreCase(formato)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static String estensioneDi(String nome) {
+            int punto = nome.lastIndexOf('.');
+            return punto < 0 || punto == nome.length() - 1 ? "" : nome.substring(punto + 1);
+        }
     }
 
     private record RowOutcome(String esito, String dettaglio) {
@@ -178,6 +211,12 @@ public final class DeletionEngine implements DeletionApplicationService {
             if (!deleteValue.equalsIgnoreCase("Yes")) {
                 context.errori++;
                 return new RowOutcome(ESITO_ERRORE, "Valore Delete non ammesso: '" + deleteValue + "'");
+            }
+
+            if (!row.coerente()) {
+                context.errori++;
+                return new RowOutcome(ESITO_ERRORE,
+                        "Riga del manifest incoerente: Path completo, Nome file, Path cartella e Formato file non corrispondono; file conservato");
             }
 
             String fullPath = row.fullPath();
