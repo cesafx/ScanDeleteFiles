@@ -297,9 +297,11 @@ public final class DeletionEngine implements DeletionApplicationService {
                 throw new IOException("Il manifest CSV è vuoto");
             }
             String header = lines.get(0);
-            if (header.startsWith(BOM)) {
-                header = header.substring(1);
+            if (!header.startsWith(BOM)) {
+                throw new IOException(
+                        "Il manifest CSV deve iniziare con il BOM UTF-8: contratto non conforme");
             }
+            header = header.substring(1);
             if (!header.equals(String.join(String.valueOf(CSV_SEPARATOR), COLUMNS))) {
                 throw new IOException("Intestazione del manifest CSV non conforme al contratto");
             }
