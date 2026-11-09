@@ -62,16 +62,20 @@ public final class DeletionView implements ScreenView {
         VBox content = screenContent(AppScreen.DELETE);
 
         manifest = new TextField();
+        manifest.setId("deletion-manifest");
         manifest.setPromptText("Manifest CSV revisionato");
         chooseManifest = new Button("Scegli manifest");
+        chooseManifest.setId("choose-delete-manifest");
         chooseManifest.setOnAction(event -> chooseManifest());
         HBox manifestRow = fieldRow(manifest, chooseManifest);
 
         ToggleGroup mode = new ToggleGroup();
         trashMode = new RadioButton("Sposta nel cestino (predefinito)");
+        trashMode.setId("trash-deletion-mode");
         trashMode.setToggleGroup(mode);
         trashMode.setSelected(true);
         permanentMode = new RadioButton("Cancella definitivamente");
+        permanentMode.setId("permanent-deletion-mode");
         permanentMode.setToggleGroup(mode);
 
         VBox modes = new VBox(10, trashMode, permanentMode);
@@ -122,7 +126,9 @@ public final class DeletionView implements ScreenView {
 
     private void startDeletion() {
         DeletionMode mode = trashMode.isSelected() ? DeletionMode.TRASH : DeletionMode.PERMANENT;
-        boolean confirmed = mode == DeletionMode.PERMANENT && permanentDeletionConfirmation.confirm();
+        boolean confirmed = mode == DeletionMode.PERMANENT
+                && permanentDeletionConfirmation.confirm(PermanentDeletionConfirmation.WARNING)
+                == PermanentDeletionConfirmation.Result.CONFIRMED;
         if (mode == DeletionMode.PERMANENT && !confirmed) {
             status.setText("Cancellazione permanente non confermata: nessun file eliminato");
             return;
@@ -152,12 +158,18 @@ public final class DeletionView implements ScreenView {
         currentOperation = new CancellableState(deletionService.start(command, ui));
     }
 
-    private static boolean showPermanentDeletionConfirmation() {
+    private static PermanentDeletionConfirmation.Result showPermanentDeletionConfirmation(String warning) {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.setTitle("Conferma cancellazione permanente");
         alert.setHeaderText("Confermare la cancellazione definitiva?");
-        alert.setContentText(PermanentDeletionConfirmation.WARNING);
-        return alert.showAndWait().filter(ButtonType.OK::equals).isPresent();
+        alert.setContentText(warning);
+        var selection = alert.showAndWait();
+        if (selection.isEmpty()) {
+            return PermanentDeletionConfirmation.Result.CLOSED;
+        }
+        return ButtonType.OK.equals(selection.get())
+                ? PermanentDeletionConfirmation.Result.CONFIRMED
+                : PermanentDeletionConfirmation.Result.REJECTED;
     }
 
     private record CancellableState(it.scandeletefiles.application.CancellableOperation operation) {

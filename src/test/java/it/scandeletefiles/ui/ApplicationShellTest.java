@@ -1,6 +1,7 @@
 package it.scandeletefiles.ui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -27,7 +28,11 @@ class ApplicationShellTest {
 
     @BeforeAll
     static void startJavaFx() {
-        Platform.startup(() -> {});
+        try {
+            Platform.startup(() -> {});
+        } catch (IllegalStateException alreadyStarted) {
+            // Un'altra classe di test ha già avviato il toolkit JavaFX.
+        }
     }
 
     @Test
@@ -47,7 +52,7 @@ class ApplicationShellTest {
             assertNotNull(deleteNavigation);
             deleteNavigation.fire();
             assertEquals("Cancellazione", title(scene).getText());
-            assertDisabled(scene, "#choose-delete-manifest");
+            assertEnabled(scene, "#choose-delete-manifest");
 
             Button scanNavigation = (Button) scene.lookup("#scan-navigation");
             assertNotNull(scanNavigation);
@@ -93,6 +98,14 @@ class ApplicationShellTest {
         Button button = (Button) scene.lookup(selector);
         assertNotNull(button);
         assertTrue(button.isDisabled());
+    }
+
+    private static void assertEnabled(Scene scene, String selector) {
+        scene.getRoot().applyCss();
+        scene.getRoot().layout();
+        Button button = (Button) scene.lookup(selector);
+        assertNotNull(button);
+        assertFalse(button.isDisabled());
     }
 
     private static <T> T runOnFxThread(Callable<T> callable) throws Exception {
