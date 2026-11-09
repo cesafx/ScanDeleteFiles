@@ -61,3 +61,39 @@ La schermata iniziale è **Scansione**. La barra laterale permette di passare a
 - `navigation`: stato di navigazione indipendente da JavaFX;
 - `ui`: sola presentazione JavaFX, senza accesso al filesystem o logica di
   cancellazione.
+
+## Distribuzione Windows portabile
+
+Su Windows l'applicazione è distribuita come archivio ZIP contenente l'immagine
+app-image prodotta con `jpackage` e il runtime Java 21, così non richiede una
+Java preinstallata sul PC di destinazione:
+
+```powershell
+.\mvnw.cmd -B -Pwindows-package clean package
+```
+
+L'archivio risultante si trova in `target/ScanDeleteFiles-<versione>.zip`.
+Una volta estratto, si avvia l'EXE incluso (`ScanDeleteFiles.exe`) senza
+installazione.
+
+## Limiti del cestino
+
+Il cestino è la destinazione predefinita della cancellazione. Su Windows, nel
+l'MVP, l'integrazione nativa con il cestino di sistema non è inclusa: se il
+cestino non è disponibile il file viene saltato e segnalato nell'esito, senza
+passare automaticamente alla cancellazione permanente.
+
+## Cancellazione permanente
+
+La cancellazione definitiva è opzionale e richiede una conferma esplicita prima
+di avviarsi. Non esiste un fallback automatico dal cestino alla cancellazione
+permanente: se il cestino non è disponibile, il file non viene eliminato.
+
+## CSV e report
+
+Il manifest di scansione è un CSV UTF-8 con BOM, delimitato da punto e
+virgola, con sei colonne (`Nome file`, `Path cartella`, `Path completo`,
+`Formato file`, `Data ultima modifica`, `Delete`) inizializzate a `Delete=Yes`.
+Il report di cancellazione aggiunge le colonne `Esito` e `Dettaglio` e viene
+salvato accanto al manifest di input. L'audit log (`.log`) viene prodotto in
+italiano per ogni scansione e cancellazione.

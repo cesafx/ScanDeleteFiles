@@ -19,3 +19,8 @@ preferences.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Distribuzione Windows portabile: immagine app-image jpackage e ZIP di output
+target/package/
+ScanDeleteFiles/
+*.zip
