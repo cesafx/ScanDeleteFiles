@@ -165,10 +165,10 @@ public final class DeletionEngine implements DeletionApplicationService {
         @Override
         public void run() {
             Instant start = clock.instant();
+            DeletionContext context = new DeletionContext();
             try {
                 notifyProgress(OperationProgress.indeterminate(0, "Avvio cancellazione"));
                 List<CsvRow> rows = readManifest(command.manifest());
-                DeletionContext context = new DeletionContext();
                 context.controllate = rows.size();
                 for (CsvRow row : rows) {
                     if ("Yes".equalsIgnoreCase(row.deleteValue())) {
@@ -196,7 +196,7 @@ public final class DeletionEngine implements DeletionApplicationService {
                         cancelled.get() ? "Annullata dall'utente prima del completamento" : null);
                 notifyFinished(new OperationResult(status, messaggioFinale(status, context)));
             } catch (Exception exc) {
-                failed(start, exc);
+                failed(start, context, exc);
             }
         }
 
@@ -491,11 +491,10 @@ public final class DeletionEngine implements DeletionApplicationService {
             }
         }
 
-        private void failed(Instant start, Exception exc) {
+        private void failed(Instant start, DeletionContext context, Exception exc) {
+            context.errori++;
             try {
-                DeletionContext empty = new DeletionContext();
-                empty.controllate = 0;
-                writeAudit(command.manifest(), OperationStatus.FAILED, start, clock.instant(), empty,
+                writeAudit(command.manifest(), OperationStatus.FAILED, start, clock.instant(), context,
                         exc.getMessage());
             } catch (IOException ioExc) {
                 // il log di audit non \u00e8 scrivibile: l'esito \u00e8 comunque segnato come fallito

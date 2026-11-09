@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -328,22 +329,45 @@ class DeletionAuditLogTest {
     }
 
     @Test
-    void erroreFataleProduceComunqueAuditFallita(@TempDir Path root) throws Exception {
-        Path file = root.resolve("file.txt");
-        writeFile(root, "file.txt", Instant.parse("2026-11-09T23:00:00Z"));
+    void erroreFataleDopoUnaRigaMantieneConteggiEdEffettiRealiNellAudit(@TempDir Path root)
+            throws Exception {
+        Path trashDir = Files.createDirectory(root.resolve("cestino"));
+        Path completato = root.resolve("completato.txt");
+        Path fatale = root.resolve("fatale.txt");
+        writeFile(root, "completato.txt", Instant.parse("2026-11-09T23:00:00Z"));
+        writeFile(root, "fatale.txt", Instant.parse("2026-11-09T23:00:00Z"));
         Path manifest = root.resolve("fatale.csv");
         Files.writeString(manifest, manifestCsv(root.toString(),
-                row("file.txt", root.toString(), file, "TXT", "2026/11/09", "Yes")),
+                row("completato.txt", root.toString(), completato, "TXT", "2026/11/09", "Yes"),
+                row("fatale.txt", root.toString(), fatale, "TXT", "2026/11/09", "Yes")),
                 StandardCharsets.UTF_8);
-        TrashAdapter fatal = ignored -> {
-            throw new IllegalStateException("guasto fatale controllato");
+        AtomicInteger calls = new AtomicInteger();
+        TrashAdapter fatalAfterFirst = file -> {
+            if (calls.incrementAndGet() == 2) {
+                throw new IllegalStateException("guasto fatale controllato");
+            }
+            try {
+                Files.move(file, trashDir.resolve(file.getFileName()));
+                return new TrashResult(TrashResult.Status.MOVED, "cestinato prima del guasto");
+            } catch (Exception exc) {
+                return new TrashResult(TrashResult.Status.FAILED, exc.getMessage());
+            }
         };
 
-        OperationResult result = execute(new DeletionEngine(fatal, Clock.fixed(FIXED, ZoneOffset.UTC)), manifest);
+        OperationResult result = execute(
+                new DeletionEngine(fatalAfterFirst, Clock.fixed(FIXED, ZoneOffset.UTC)), manifest);
 
         assertEquals(OperationStatus.FAILED, result.status());
+        assertFalse(Files.exists(completato), "la prima riga già conclusa deve restare cestinata");
+        assertTrue(Files.exists(fatale), "la riga del guasto fatale non deve risultare cancellata");
         String audit = Files.readString(root.resolve("fatale.csv.log"), StandardCharsets.UTF_8);
         assertTrue(audit.contains("Stato: FALLITA"));
+        assertTrue(audit.contains("Righe controllate: 2"));
+        assertTrue(audit.contains("Righe elaborate: 1"));
+        assertTrue(audit.contains("Righe Da eliminare: 2"));
+        assertTrue(audit.contains("File cestinati: 1"));
+        assertTrue(audit.contains("Errori: 1"));
+        assertTrue(audit.contains("TXT: 100,0%"));
         assertTrue(audit.contains("guasto fatale controllato"));
     }
 
