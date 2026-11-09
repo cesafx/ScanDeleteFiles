@@ -29,6 +29,7 @@ public record ApplicationCompositionRoot(
 
     public Parent createView() {
         ExtensionPreferences extensions = new ExtensionPreferences(platform.settings());
-        return new ApplicationShell(navigation, new ScanView(services.scan(), extensions), new DeletionView()).createView();
+        return new ApplicationShell(navigation, new ScanView(services.scan(), extensions),
+                new DeletionView(services.deletion())).createView();
     }
 }

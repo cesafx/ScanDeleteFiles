@@ -1,6 +1,7 @@
 package it.scandeletefiles.bootstrap;
 
 import it.scandeletefiles.application.DeletionApplicationService;
+import it.scandeletefiles.application.DeletionEngine;
 import it.scandeletefiles.application.ScanApplicationService;
 import it.scandeletefiles.application.scan.ScanEngine;
 import java.util.Objects;
@@ -25,8 +26,6 @@ public record ApplicationServices(ScanApplicationService scan, DeletionApplicati
         Objects.requireNonNull(platform, "platform");
         return new ApplicationServices(
                 new ScanEngine(platform),
-                (command, observer) -> {
-                    throw new UnsupportedOperationException("La cancellazione non è ancora implementata");
-                });
+                new DeletionEngine(platform.trash(), platform.clock()));
     }
 }
