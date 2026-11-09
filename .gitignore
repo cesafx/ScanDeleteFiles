@@ -1,0 +1,21 @@
+# Maven
+target/
+.mvn/timing.properties
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+
+# Runtime output and user data
+*.log
+*_report.csv
+scan_*.csv
+preferences.json
+
+# OS
+.DS_Store
+Thumbs.db
