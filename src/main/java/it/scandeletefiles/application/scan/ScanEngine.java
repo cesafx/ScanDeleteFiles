@@ -5,6 +5,7 @@ import it.scandeletefiles.application.OperationObserver;
 import it.scandeletefiles.application.OperationProgress;
 import it.scandeletefiles.application.OperationResult;
 import it.scandeletefiles.application.OperationStatus;
+import it.scandeletefiles.application.csv.CsvFormat;
 import it.scandeletefiles.application.ScanApplicationService;
 import it.scandeletefiles.application.ScanCommand;
 import it.scandeletefiles.bootstrap.PlatformAdapters;
@@ -16,11 +17,13 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
-import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Clock;
 import java.time.Instant;
@@ -162,7 +165,8 @@ public final class ScanEngine implements ScanApplicationService {
                             }
 
                             @Override
-                            public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                            public FileVisitResult visitFileFailed(Path file, IOException exc)
+                                    throws IOException {
                                 context.accessErrors.add(file.toString() + ": " + exc.getMessage());
                                 return FileVisitResult.CONTINUE;
                             }
@@ -225,47 +229,60 @@ public final class ScanEngine implements ScanApplicationService {
                 }
                 writer.write('\n');
                 for (CsvRow row : rows) {
-                    writer.write(escapeCsv(row.fileName()));
+                    writer.write(CsvFormat.escape(row.fileName(), CSV_SEPARATOR));
                     writer.write(CSV_SEPARATOR);
-                    writer.write(escapeCsv(row.folderPath()));
+                    writer.write(CsvFormat.escape(row.folderPath(), CSV_SEPARATOR));
                     writer.write(CSV_SEPARATOR);
-                    writer.write(escapeCsv(row.fullPath()));
+                    writer.write(CsvFormat.escape(row.fullPath(), CSV_SEPARATOR));
                     writer.write(CSV_SEPARATOR);
-                    writer.write(escapeCsv(row.format()));
+                    writer.write(CsvFormat.escape(row.format(), CSV_SEPARATOR));
                     writer.write(CSV_SEPARATOR);
-                    writer.write(escapeCsv(row.lastModified()));
+                    writer.write(CsvFormat.escape(row.lastModified(), CSV_SEPARATOR));
                     writer.write(CSV_SEPARATOR);
-                    writer.write(DELETE_YES);
+                    writer.write(CsvFormat.escape(DELETE_YES, CSV_SEPARATOR));
                     writer.write('\n');
                 }
             }
-            try {
-                for (int sequence = 1; ; sequence++) {
-                    Path candidate = uniqueName(requestedManifest, sequence);
-                    if (Files.exists(candidate) || Files.exists(auditPath(candidate))) {
-                        continue;
-                    }
-                    try {
-                        Files.move(temp, candidate);
-                        return candidate;
-                    } catch (FileAlreadyExistsException collision) {
-                        // Un'altra scansione ha pubblicato lo stesso nome: prova il suffisso successivo.
-                    }
+            for (int sequence = 1; ; sequence++) {
+                Path candidate = uniqueName(requestedManifest, sequence);
+                if (Files.exists(candidate) || Files.exists(auditPath(candidate))) {
+                    continue;
                 }
-            } finally {
-                Files.deleteIfExists(temp);
+                try {
+                    Files.move(temp, candidate, StandardCopyOption.REPLACE_EXISTING);
+                    return candidate;
+                } catch (FileAlreadyExistsException collision) {
+                    // Un'altra scansione ha pubblicato lo stesso nome tra il controllo e lo sposto:
+                    // prova il suffisso successivo, temp è ancora disponibile per il retry.
+                } catch (NoSuchFileException gone) {
+                    throw new IOException("Impossibile pubblicare il manifest: file temporaneo non disponibile",
+                            gone);
+                }
             }
         }
 
-        private static String escapeCsv(String value) {
-            if (value == null) {
-                return "";
+        private static Path availableAuditName(Path requestedManifest) {
+            for (int sequence = 1; ; sequence++) {
+                Path candidate = uniqueName(requestedManifest, sequence);
+                if (!Files.exists(auditPath(candidate))) {
+                    return candidate;
+                }
             }
-            if (value.indexOf(CSV_SEPARATOR) >= 0 || value.indexOf('"') >= 0 || value.indexOf('\n') >= 0
-                    || value.indexOf('\r') >= 0) {
-                return '"' + value.replace("\"", "\"\"") + '"';
+        }
+
+        private static Path auditPath(Path manifest) {
+            return manifest.resolveSibling(manifest.getFileName().toString() + ".log");
+        }
+
+        private static Path uniqueName(Path requested, int sequence) {
+            if (sequence == 1) {
+                return requested;
             }
-            return value;
+            String name = requested.getFileName().toString();
+            int extension = name.lastIndexOf('.');
+            String stem = extension > 0 ? name.substring(0, extension) : name;
+            String suffix = extension > 0 ? name.substring(extension) : "";
+            return requested.resolveSibling(stem + "_" + sequence + suffix);
         }
 
         private void writeAudit(Path manifest, OperationStatus status, Instant start, Instant end,
@@ -276,7 +293,7 @@ public final class ScanEngine implements ScanApplicationService {
             List<String> lines = new ArrayList<>();
             lines.add("ScanDeleteFiles — Audit di scansione");
             lines.add("");
-            lines.add("Stato: " + statoItaliano(status));
+            lines.add("Stato: " + CsvFormat.statoItaliano(status));
             lines.add("Inizio: " + LocalDateTime.ofInstant(start, zone).format(TIMESTAMP_FORMAT));
             lines.add("Fine: " + LocalDateTime.ofInstant(end, zone).format(TIMESTAMP_FORMAT));
             lines.add("Durata: " + String.format(Locale.ITALIAN, "%.3f s",
@@ -344,41 +361,9 @@ public final class ScanEngine implements ScanApplicationService {
             return null;
         }
 
-        private static Path availableAuditName(Path requestedManifest) {
-            for (int sequence = 1; ; sequence++) {
-                Path candidate = uniqueName(requestedManifest, sequence);
-                if (!Files.exists(auditPath(candidate))) {
-                    return candidate;
-                }
-            }
-        }
-
-        private static Path auditPath(Path manifest) {
-            return manifest.resolveSibling(manifest.getFileName().toString() + ".log");
-        }
-
-        private static Path uniqueName(Path requested, int sequence) {
-            if (sequence == 1) {
-                return requested;
-            }
-            String name = requested.getFileName().toString();
-            int extension = name.lastIndexOf('.');
-            String stem = extension > 0 ? name.substring(0, extension) : name;
-            String suffix = extension > 0 ? name.substring(extension) : "";
-            return requested.resolveSibling(stem + "_" + sequence + suffix);
-        }
-
         private static String exceptionDescription(Throwable failure) {
             String message = failure.getMessage();
             return failure.getClass().getSimpleName() + (message == null || message.isBlank() ? "" : ": " + message);
-        }
-
-        private static String statoItaliano(OperationStatus status) {
-            return switch (status) {
-                case COMPLETED -> "COMPLETATA";
-                case CANCELLED -> "ANNULLATA";
-                case FAILED -> "FALLITA";
-            };
         }
 
         private static String folderPath(Path file) {

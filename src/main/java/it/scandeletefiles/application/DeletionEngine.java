@@ -2,6 +2,7 @@ package it.scandeletefiles.application;
 
 import it.scandeletefiles.platform.TrashAdapter;
 import it.scandeletefiles.platform.TrashResult;
+import it.scandeletefiles.application.csv.CsvFormat;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -391,12 +392,12 @@ public final class DeletionEngine implements DeletionApplicationService {
                         if (j > 0) {
                             writer.write(CSV_SEPARATOR);
                         }
-                        writer.write(escapeCsv(j < fields.length ? fields[j] : ""));
+                        writer.write(CsvFormat.escape(j < fields.length ? fields[j] : "", CSV_SEPARATOR));
                     }
                     writer.write(CSV_SEPARATOR);
-                    writer.write(escapeCsv(outcome.esito()));
+                    writer.write(CsvFormat.escape(outcome.esito(), CSV_SEPARATOR));
                     writer.write(CSV_SEPARATOR);
-                    writer.write(escapeCsv(outcome.dettaglio()));
+                    writer.write(CsvFormat.escape(outcome.dettaglio(), CSV_SEPARATOR));
                     writer.write('\n');
                 }
             }
@@ -410,7 +411,7 @@ public final class DeletionEngine implements DeletionApplicationService {
             List<String> lines = new ArrayList<>();
             lines.add("ScanDeleteFiles — Audit di cancellazione");
             lines.add("");
-            lines.add("Stato: " + statoItaliano(status));
+            lines.add("Stato: " + CsvFormat.statoItaliano(status));
             lines.add("Inizio: " + LocalDateTime.ofInstant(start, zone).format(TIMESTAMP_FORMAT));
             lines.add("Fine: " + LocalDateTime.ofInstant(end, zone).format(TIMESTAMP_FORMAT));
             lines.add("Durata: " + String.format(Locale.ITALIAN, "%.3f s",
@@ -442,14 +443,6 @@ public final class DeletionEngine implements DeletionApplicationService {
                 lines.add("Note: " + note);
             }
             Files.write(audit, lines, StandardCharsets.UTF_8);
-        }
-
-        private static String statoItaliano(OperationStatus status) {
-            return switch (status) {
-                case COMPLETED -> "COMPLETATA";
-                case CANCELLED -> "ANNULLATA";
-                case FAILED -> "FALLITA";
-            };
         }
 
         private static String messaggioFinale(OperationStatus status, DeletionContext context) {
@@ -487,17 +480,6 @@ public final class DeletionEngine implements DeletionApplicationService {
                 return parent.resolve("cancellazione_" + base.substring("scansione_".length()) + ".csv");
             }
             return parent.resolve(base + ".report.csv");
-        }
-
-        private static String escapeCsv(String value) {
-            if (value == null) {
-                return "";
-            }
-            if (value.indexOf(CSV_SEPARATOR) >= 0 || value.indexOf('"') >= 0
-                    || value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) {
-                return '"' + value.replace("\"", "\"\"") + '"';
-            }
-            return value;
         }
 
         private static void moveAtomically(Path temp, Path target) throws IOException {
