@@ -79,7 +79,7 @@
                                     <goal>copy-dependencies</goal>
                                 </goals>
                                 <configuration>
-                                    <outputDirectory>${project.build.directory}</outputDirectory>
+                                    <outputDirectory>${project.build.directory}/package-input</outputDirectory>
                                     <overWriteIfNewer>true</overWriteIfNewer>
                                     <includeScope>runtime</includeScope>
                                 </configuration>
@@ -91,6 +91,20 @@
                         <artifactId>exec-maven-plugin</artifactId>
                         <version>3.3.0</version>
                         <executions>
+                            <execution>
+                                <id>prepare-package-input</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>powershell.exe</executable>
+                                    <arguments>
+                                        <argument>-Command</argument>
+                                        <argument>New-Item -ItemType Directory -Force '${project.build.directory}/package-input' | Out-Null; Copy-Item '${project.build.directory}/${project.build.finalName}.jar' '${project.build.directory}/package-input/' -Force</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
                             <execution>
                                 <id>create-jpackage-app-image</id>
                                 <phase>package</phase>
@@ -105,7 +119,7 @@
                                         <argument>--name</argument>
                                         <argument>ScanDeleteFiles</argument>
                                         <argument>--input</argument>
-                                        <argument>${project.build.directory}</argument>
+                                        <argument>${project.build.directory}/package-input</argument>
                                         <argument>--main-jar</argument>
                                         <argument>${project.build.finalName}.jar</argument>
                                         <argument>--main-class</argument>
