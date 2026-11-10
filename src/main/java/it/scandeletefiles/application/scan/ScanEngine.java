@@ -11,6 +11,8 @@ import it.scandeletefiles.bootstrap.PlatformAdapters;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
@@ -18,8 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Clock;
 import java.time.Instant;
@@ -170,7 +171,7 @@ public final class ScanEngine implements ScanApplicationService {
             } catch (ScanCancelledException exc) {
                 cancelled(start, clock.instant(), context);
             } catch (Exception exc) {
-                failed(start, clock.instant(), exc);
+                failed(start, clock.instant(), context, exc);
             }
         }
 
@@ -185,35 +186,35 @@ public final class ScanEngine implements ScanApplicationService {
             List<CsvRow> rows = context.matching.stream()
                     .sorted(Comparator.comparing(CsvRow::fullPath))
                     .collect(Collectors.toUnmodifiableList());
-            writeCsv(command.manifestDestination(), rows);
-            writeAudit(command.manifestDestination(), OperationStatus.COMPLETED, start, end, context, null);
+            Path manifest = writeCsv(command.manifestDestination(), rows);
+            writeAudit(manifest, OperationStatus.COMPLETED, start, end, context, null, null);
             notifyFinished(new OperationResult(OperationStatus.COMPLETED,
-                    "Scansione completata: " + rows.size() + " file corrispondenti"));
+                    "Scansione completata: " + rows.size() + " file corrispondenti. Manifesto: " + manifest));
         }
 
         private void cancelled(Instant start, Instant end, ScanContext context) {
             try {
                 writeAudit(command.manifestDestination(), OperationStatus.CANCELLED, start, end, context,
-                        "Annullata dall'utente prima del completamento");
+                        "Annullata dall'utente prima del completamento", null);
             } catch (IOException exc) {
                 // il log di audit deve essere prodotto anche quando la scansione viene annullata
             }
             notifyFinished(new OperationResult(OperationStatus.CANCELLED, "Scansione annullata"));
         }
 
-        private void failed(Instant start, Instant end, Exception exc) {
-            try {
-                writeAudit(command.manifestDestination(), OperationStatus.FAILED, start, end, new ScanContext(),
-                        exc.getMessage());
-            } catch (IOException ioExc) {
-                // il log di audit non \u00e8 scrivibile: l'esito \u00e8 comunque segnato come fallito
-            }
-            notifyFinished(new OperationResult(OperationStatus.FAILED, "Scansione fallita: " + exc.getMessage()));
+        private void failed(Instant start, Instant end, ScanContext context, Exception exc) {
+            Path audit = writeFailureAudit(start, end, context, exc);
+            String detail = exceptionDescription(exc);
+            String auditMessage = audit == null
+                    ? " Impossibile scrivere anche il log diagnostico."
+                    : " Log diagnostico: " + audit;
+            notifyFinished(new OperationResult(OperationStatus.FAILED,
+                    "Scansione fallita: " + detail + "." + auditMessage));
         }
 
-        private void writeCsv(Path manifest, List<CsvRow> rows) throws IOException {
-            Path parent = manifest.getParent() == null ? Path.of(".") : manifest.getParent();
-            Path temp = parent.resolve(manifest.getFileName().toString() + ".tmp." + System.nanoTime());
+        private Path writeCsv(Path requestedManifest, List<CsvRow> rows) throws IOException {
+            Path parent = requestedManifest.getParent() == null ? Path.of(".") : requestedManifest.getParent();
+            Path temp = parent.resolve(requestedManifest.getFileName().toString() + ".tmp." + System.nanoTime());
             try (BufferedWriter writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8)) {
                 writer.write('\uFEFF');
                 for (int i = 0; i < COLUMNS.length; i++) {
@@ -238,14 +239,21 @@ public final class ScanEngine implements ScanApplicationService {
                     writer.write('\n');
                 }
             }
-            moveAtomically(temp, manifest);
-        }
-
-        private void moveAtomically(Path temp, Path manifest) throws IOException {
             try {
-                Files.move(temp, manifest, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException | UnsupportedOperationException exc) {
-                Files.move(temp, manifest, StandardCopyOption.REPLACE_EXISTING);
+                for (int sequence = 1; ; sequence++) {
+                    Path candidate = uniqueName(requestedManifest, sequence);
+                    if (Files.exists(candidate) || Files.exists(auditPath(candidate))) {
+                        continue;
+                    }
+                    try {
+                        Files.move(temp, candidate);
+                        return candidate;
+                    } catch (FileAlreadyExistsException collision) {
+                        // Un'altra scansione ha pubblicato lo stesso nome: prova il suffisso successivo.
+                    }
+                }
+            } finally {
+                Files.deleteIfExists(temp);
             }
         }
 
@@ -261,10 +269,10 @@ public final class ScanEngine implements ScanApplicationService {
         }
 
         private void writeAudit(Path manifest, OperationStatus status, Instant start, Instant end,
-                                ScanContext context, String note) throws IOException {
+                                ScanContext context, String note, Throwable failure) throws IOException {
             Clock clock = platform.clock();
             ZoneId zone = clock.getZone();
-            Path audit = manifest.resolveSibling(manifest.getFileName().toString() + ".log");
+            Path audit = auditPath(manifest);
             List<String> lines = new ArrayList<>();
             lines.add("ScanDeleteFiles — Audit di scansione");
             lines.add("");
@@ -297,7 +305,72 @@ public final class ScanEngine implements ScanApplicationService {
                 lines.add("");
                 lines.add("Note: " + note);
             }
+            if (failure != null) {
+                lines.add("");
+                lines.add("Eccezione: " + failure.getClass().getName()
+                        + (failure.getMessage() == null ? "" : ": " + failure.getMessage()));
+                lines.add("Stack trace:");
+                StringWriter trace = new StringWriter();
+                failure.printStackTrace(new PrintWriter(trace));
+                trace.toString().lines().forEach(line -> lines.add("  " + line));
+            }
             Files.write(audit, lines, StandardCharsets.UTF_8);
+        }
+
+        private Path writeFailureAudit(Instant start, Instant end, ScanContext context, Exception failure) {
+            String fileName = command.manifestDestination().getFileName().toString();
+            List<Path> locations = List.of(
+                    command.manifestDestination(),
+                    command.root().resolve(fileName),
+                    Path.of(System.getProperty("user.home", ".")).resolve(fileName));
+            IOException writeFailure = null;
+            for (Path location : locations.stream().distinct().toList()) {
+                Path available = availableAuditName(location);
+                try {
+                    writeAudit(available, OperationStatus.FAILED, start, end, context,
+                            exceptionDescription(failure), failure);
+                    return auditPath(available);
+                } catch (IOException exc) {
+                    if (writeFailure == null) {
+                        writeFailure = exc;
+                    } else {
+                        writeFailure.addSuppressed(exc);
+                    }
+                }
+            }
+            if (writeFailure != null) {
+                failure.addSuppressed(writeFailure);
+            }
+            return null;
+        }
+
+        private static Path availableAuditName(Path requestedManifest) {
+            for (int sequence = 1; ; sequence++) {
+                Path candidate = uniqueName(requestedManifest, sequence);
+                if (!Files.exists(auditPath(candidate))) {
+                    return candidate;
+                }
+            }
+        }
+
+        private static Path auditPath(Path manifest) {
+            return manifest.resolveSibling(manifest.getFileName().toString() + ".log");
+        }
+
+        private static Path uniqueName(Path requested, int sequence) {
+            if (sequence == 1) {
+                return requested;
+            }
+            String name = requested.getFileName().toString();
+            int extension = name.lastIndexOf('.');
+            String stem = extension > 0 ? name.substring(0, extension) : name;
+            String suffix = extension > 0 ? name.substring(extension) : "";
+            return requested.resolveSibling(stem + "_" + sequence + suffix);
+        }
+
+        private static String exceptionDescription(Throwable failure) {
+            String message = failure.getMessage();
+            return failure.getClass().getSimpleName() + (message == null || message.isBlank() ? "" : ": " + message);
         }
 
         private static String statoItaliano(OperationStatus status) {

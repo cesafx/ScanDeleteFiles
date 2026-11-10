@@ -77,7 +77,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 28. Come utente, voglio includere i formati OpenDocument `ODT`, `ODS` e `ODP`, così da censire documenti, fogli di calcolo e presentazioni OpenDocument.
 29. Come utente, voglio includere gli archivi `ZIP`, `RAR` e `7Z`, così da censire gli archivi compressi supportati.
 30. Come utente, voglio scegliere la cartella e il nome del manifest di scansione, così da controllare dove viene salvato il risultato.
-31. Come utente, voglio ricevere una proposta di nome contenente un timestamp, così da ridurre il rischio di sovrascrivere o confondere scansioni diverse.
+31. Come utente, voglio che ogni manifest abbia un nome univoco e non sovrascriva mai un manifest o il relativo log già esistente, così da conservare scansioni diverse.
 32. Come utente, voglio che il manifest sia codificato in UTF-8 con BOM, così da conservare correttamente i caratteri italiani e facilitarne l’apertura con Excel.
 33. Come utente di Excel in configurazione italiana, voglio che il manifest usi il punto e virgola come delimitatore, così da visualizzare correttamente le colonne.
 34. Come utente, voglio che il manifest contenga esattamente le sei colonne previste, così da avere un formato stabile e comprensibile.
@@ -95,7 +95,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 46. Come utente, voglio poter annullare una scansione in corso, così da interrompere un’operazione non più necessaria.
 47. Come utente, voglio che una scansione annullata non lasci un manifest parziale, così da non usare accidentalmente risultati incompleti.
 48. Come utente, voglio ricevere un log di audit anche quando annullo la scansione, così da conservare traccia dell’operazione interrotta.
-49. Come utente, voglio ricevere un log di audit anche quando la scansione incontra errori, così da comprendere ciò che è accaduto.
+49. Come utente, voglio ricevere un log diagnostico anche quando la scansione fallisce, contenente il tipo dell’eccezione, il messaggio e lo stack trace; se la destinazione richiesta non è scrivibile, il log deve essere salvato nella radice di scansione o, come ultima alternativa, nella cartella utente, e il percorso deve essere mostrato nell’esito.
 50. Come utente, voglio che il log di scansione indichi lo stato finale, così da distinguere un completamento da un annullamento o un errore.
 51. Come utente, voglio che il log di scansione indichi inizio, fine e durata, così da conoscere la finestra temporale dell’operazione.
 52. Come utente, voglio che il log di scansione riporti il numero di elementi visitati previsto dal conteggio di scansione, così da valutare l’ampiezza del lavoro svolto.
@@ -194,6 +194,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 - La configurazione della checklist sarà persistente.
 - L’utente sceglierà posizione e nome del manifest.
 - L’interfaccia proporrà un nome con timestamp, senza impedire all’utente di modificarlo.
+- Il manifest non sovrascriverà mai un file o un audit esistente: in caso di collisione verrà aggiunto un suffisso numerico (`_2`, `_3`, ...), comunicando nell’esito il percorso effettivo.
 - Il manifest finale non sarà pubblicato se la scansione viene annullata.
 - La strategia concreta per evitare la presenza di un manifest parziale dovrà garantire che il percorso finale contenga soltanto un file completato.
 
@@ -271,6 +272,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 - Ogni scansione produrrà un file `.log` in italiano accanto al CSV pertinente.
 - Ogni cancellazione produrrà un file `.log` in italiano accanto al CSV pertinente.
 - Il log sarà prodotto anche in caso di annullamento o errori.
+- In caso di fallimento il log includerà classe, messaggio e stack trace dell’eccezione. Se non può essere scritto accanto alla destinazione richiesta, verrà tentata la radice di scansione e poi la cartella utente; l’esito mostrerà il percorso effettivo del log.
 - Il log di scansione includerà:
   - stato;
   - data e ora di inizio;

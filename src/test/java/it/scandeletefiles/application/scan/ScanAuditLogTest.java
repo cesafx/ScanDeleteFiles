@@ -148,4 +148,65 @@ class ScanAuditLogTest {
         assertTrue(Files.readString(audit, StandardCharsets.UTF_8).contains("Stato: ANNULLATA"),
                 "l'audit deve dichiarare lo stato annullato");
     }
+
+    @Test
+    void fallitaScriveNellaRadiceUnLogConEccezioneQuandoLaDestinazioneNonEAccessibile(
+            @TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("file.txt"), "x");
+        Path manifest = root.resolve("cartella-inesistente").resolve("scansione.csv");
+
+        OperationResult result = execute(new ScanEngine(platform()), new ScanCommand(
+                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, manifest));
+
+        assertEquals(OperationStatus.FAILED, result.status());
+        Path fallbackAudit = root.resolve("scansione.csv.log");
+        assertTrue(Files.exists(fallbackAudit),
+                "se la destinazione non è scrivibile il log di errore deve essere salvato nella radice");
+        String log = Files.readString(fallbackAudit, StandardCharsets.UTF_8);
+        assertTrue(log.contains("Stato: FALLITA"));
+        assertTrue(log.contains("Eccezione: java.nio.file.NoSuchFileException"),
+                "il log deve identificare il tipo esatto dell'eccezione");
+        assertTrue(log.contains("Stack trace:"), "il log deve contenere lo stack trace diagnostico");
+        assertTrue(result.message().contains(fallbackAudit.toString()),
+                "l'interfaccia deve indicare dove trovare il log di errore");
+    }
+
+    @Test
+    void scansioniRipetuteNonSovrascrivonoMaiManifestOLog(@TempDir Path root) throws Exception {
+        Path file = root.resolve("file.txt");
+        Files.writeString(file, "x");
+        Files.setLastModifiedTime(file, FileTime.from(Instant.parse("2026-11-08T10:00:00Z")));
+        Path requested = root.resolve("scansione_20261109_100000.csv");
+        ScanEngine engine = new ScanEngine(platform());
+        ScanCommand command = new ScanCommand(
+                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, requested);
+
+        assertEquals(OperationStatus.COMPLETED, execute(engine, command).status());
+        assertEquals(OperationStatus.COMPLETED, execute(engine, command).status());
+
+        Path second = root.resolve("scansione_20261109_100000_2.csv");
+        assertTrue(Files.exists(requested));
+        assertTrue(Files.exists(second), "ogni scansione deve pubblicare un manifesto con nome diverso");
+        assertTrue(Files.exists(Path.of(requested + ".log")));
+        assertTrue(Files.exists(Path.of(second + ".log")),
+                "anche il log deve restare associato al manifesto univoco");
+    }
+
+    private static OperationResult execute(ScanEngine engine, ScanCommand command) throws Exception {
+        CountDownLatch finished = new CountDownLatch(1);
+        AtomicReference<OperationResult> result = new AtomicReference<>();
+        engine.start(command, new OperationObserver() {
+            @Override
+            public void onProgress(OperationProgress progress) {
+            }
+
+            @Override
+            public void onFinished(OperationResult operationResult) {
+                result.set(operationResult);
+                finished.countDown();
+            }
+        });
+        assertTrue(finished.await(30, TimeUnit.SECONDS), "la scansione non è terminata");
+        return result.get();
+    }
 }
