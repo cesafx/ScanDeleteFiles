@@ -102,10 +102,25 @@ jobs:
           $process = Start-Process -FilePath $env:APP_EXE -PassThru
           Start-Sleep -Seconds 10
           if ($process.HasExited) {
-            $config = Get-ChildItem (Split-Path $env:APP_EXE) -Filter "ScanDeleteFiles.cfg" -Recurse |
+            $appRoot = Split-Path $env:APP_EXE
+            $config = Get-ChildItem $appRoot -Filter "ScanDeleteFiles.cfg" -Recurse | Select-Object -First 1
+            $runtimeJava = Get-ChildItem $appRoot -Filter "java.exe" -Recurse |
+              Where-Object { $_.FullName -match "[\\/]runtime[\\/]bin[\\/]java.exe$" } |
               Select-Object -First 1
-            $details = if ($config) { (Get-Content $config.FullName) -join "%0A" } else { "config launcher non trovato" }
-            Write-Output "::error title=Launcher terminato prematuramente::Codice $($process.ExitCode)%0A$details"
+            $appDirectory = Get-ChildItem $appRoot -Directory -Recurse |
+              Where-Object { $_.Name -eq "app" } |
+              Select-Object -First 1
+            $stdout = Join-Path $env:RUNNER_TEMP "launcher.stdout.log"
+            $stderr = Join-Path $env:RUNNER_TEMP "launcher.stderr.log"
+            $diagnostic = Start-Process -FilePath $runtimeJava.FullName `
+              -ArgumentList @("-cp", "$($appDirectory.FullName)\*", "it.scandeletefiles.ScanDeleteFilesApplication") `
+              -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+            Start-Sleep -Seconds 10
+            if (-not $diagnostic.HasExited) { Stop-Process -Id $diagnostic.Id -Force }
+            $configDetails = if ($config) { (Get-Content $config.FullName) -join "%0A" } else { "config launcher non trovato" }
+            $diagnosticDetails = ((Get-Content $stdout -ErrorAction SilentlyContinue) +
+              (Get-Content $stderr -ErrorAction SilentlyContinue)) -join "%0A"
+            Write-Output "::error title=Launcher terminato prematuramente::Codice $($process.ExitCode)%0A$configDetails%0A$diagnosticDetails"
             exit 1
           }
           Stop-Process -Id $process.Id -Force
