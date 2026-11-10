@@ -123,7 +123,7 @@
                                         <argument>--main-jar</argument>
                                         <argument>${project.build.finalName}.jar</argument>
                                         <argument>--main-class</argument>
-                                        <argument>it.scandeletefiles.ScanDeleteFilesApplication</argument>
+                                        <argument>it.scandeletefiles.ScanDeleteFilesLauncher</argument>
                                         <argument>--dest</argument>
                                         <argument>${project.build.directory}/package</argument>
                                         <argument>--runtime-image</argument>

@@ -113,7 +113,7 @@ jobs:
             $stdout = Join-Path $env:RUNNER_TEMP "launcher.stdout.log"
             $stderr = Join-Path $env:RUNNER_TEMP "launcher.stderr.log"
             $diagnostic = Start-Process -FilePath $runtimeJava.FullName `
-              -ArgumentList @("-cp", "$($appDirectory.FullName)\*", "it.scandeletefiles.ScanDeleteFilesApplication") `
+              -ArgumentList @("-cp", "$($appDirectory.FullName)\*", "it.scandeletefiles.ScanDeleteFilesLauncher") `
               -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
             Start-Sleep -Seconds 10
             if (-not $diagnostic.HasExited) { Stop-Process -Id $diagnostic.Id -Force }
