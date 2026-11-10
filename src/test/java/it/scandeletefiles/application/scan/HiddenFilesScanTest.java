@@ -12,9 +12,11 @@ import it.scandeletefiles.application.ScanCommand;
 import it.scandeletefiles.bootstrap.PlatformAdapters;
 import it.scandeletefiles.platform.SettingsAdapter;
 import it.scandeletefiles.platform.TrashResult;
+import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.attribute.DosFileAttributeView;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -86,6 +88,12 @@ class HiddenFilesScanTest {
         Files.setLastModifiedTime(file, FileTime.from(quando));
     }
 
+    private static void rendiNascostoSuWindows(Path path) throws Exception {
+        if (File.separatorChar == '\\') {
+            Files.getFileAttributeView(path, DosFileAttributeView.class).setHidden(true);
+        }
+    }
+
     private static List<String> nomiCorrispondenti(Path manifest) throws Exception {
         String content = Files.readString(manifest, StandardCharsets.UTF_8);
         assertTrue(content.startsWith("\uFEFF"), "il manifest deve iniziare con il BOM UTF-8");
@@ -99,7 +107,9 @@ class HiddenFilesScanTest {
     void escludeFileNascostiDiDefault(@TempDir Path root) throws Exception {
         Instant prima = Instant.parse("2026-11-09T23:00:00Z");
         scrivi(root.resolve("visibile.txt"), "v", prima);
-        scrivi(root.resolve(".nascosto.txt"), "n", prima);
+        Path nascosto = root.resolve(".nascosto.txt");
+        scrivi(nascosto, "n", prima);
+        rendiNascostoSuWindows(nascosto);
 
         ScanEngine engine = new ScanEngine(platform());
         Path manifest = root.resolve("manifest.csv");
@@ -117,7 +127,9 @@ class HiddenFilesScanTest {
     void includeFileNascostiQuandoIlFlagEAttivo(@TempDir Path root) throws Exception {
         Instant prima = Instant.parse("2026-11-09T23:00:00Z");
         scrivi(root.resolve("visibile.txt"), "v", prima);
-        scrivi(root.resolve(".nascosto.txt"), "n", prima);
+        Path nascosto = root.resolve(".nascosto.txt");
+        scrivi(nascosto, "n", prima);
+        rendiNascostoSuWindows(nascosto);
 
         ScanEngine engine = new ScanEngine(platform());
         Path manifest = root.resolve("manifest.csv");
@@ -135,6 +147,7 @@ class HiddenFilesScanTest {
     void escludeContenutoDiDirectoryNascosteDiDefault(@TempDir Path root) throws Exception {
         Instant prima = Instant.parse("2026-11-09T23:00:00Z");
         Path nascosta = Files.createDirectories(root.resolve(".nascosta"));
+        rendiNascostoSuWindows(nascosta);
         scrivi(nascosta.resolve("dentro.txt"), "d", prima);
         scrivi(root.resolve("visibile.txt"), "v", prima);
 
@@ -154,6 +167,7 @@ class HiddenFilesScanTest {
     void includeContenutoDiDirectoryNascosteQuandoIlFlagEAttivo(@TempDir Path root) throws Exception {
         Instant prima = Instant.parse("2026-11-09T23:00:00Z");
         Path nascosta = Files.createDirectories(root.resolve(".nascosta"));
+        rendiNascostoSuWindows(nascosta);
         scrivi(nascosta.resolve("dentro.txt"), "d", prima);
         scrivi(root.resolve("visibile.txt"), "v", prima);
 

@@ -29,6 +29,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -141,6 +142,10 @@ class SafeTraversalTest {
 
     @Test
     void erroreDiAccessoNonFermaLaScansioneECompareNellAudit(@TempDir Path root) throws Exception {
+        Assumptions.assumeTrue(
+                Files.getFileStore(root).supportsFileAttributeView("posix"),
+                "la simulazione dei permessi negati richiede attributi POSIX");
+
         Path libero = root.resolve("libero.txt");
         Files.writeString(libero, "libero");
         Files.setLastModifiedTime(libero, FileTime.from(Instant.parse("2026-11-09T23:00:00Z")));

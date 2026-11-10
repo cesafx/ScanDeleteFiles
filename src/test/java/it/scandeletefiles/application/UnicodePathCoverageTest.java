@@ -9,6 +9,7 @@ import it.scandeletefiles.bootstrap.PlatformAdapters;
 import it.scandeletefiles.platform.SettingsAdapter;
 import it.scandeletefiles.platform.TrashAdapter;
 import it.scandeletefiles.platform.TrashResult;
+import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -162,15 +163,17 @@ class UnicodePathCoverageTest {
 
     @Test
     void scanAccoglieSpaziAccentiEUniCodeNelManifest(@TempDir Path root) throws Exception {
-        String[] nomiConSpeciali = {
+        List<String> nomiConSpecialiList = new ArrayList<>(List.of(
                 "documento.txt",
                 "file con spazi.txt",
                 "café.txt",
                 "報告.txt",
                 "файл.txt",
-                "a;b.txt",
-                "strano\"file.txt"
-        };
+                "a;b.txt"));
+        if (File.separatorChar != '\\') {
+            nomiConSpecialiList.add("strano\"file.txt");
+        }
+        String[] nomiConSpeciali = nomiConSpecialiList.toArray(String[]::new);
         String[] nomiEsclusi = {"escluso.log"};
         for (String nome : nomiConSpeciali) {
             writeFile(root, nome, MTIME);
@@ -227,7 +230,8 @@ class UnicodePathCoverageTest {
         String reportContent = Files.readString(report, StandardCharsets.UTF_8);
         assertTrue(reportContent.startsWith("\uFEFF"));
         List<String> reportRighe = reportContent.substring(1).lines().toList();
-        assertEquals(8, reportRighe.size(), "header più una riga per ogni file cestinato");
+        assertEquals(nomiConSpeciali.length + 1, reportRighe.size(),
+                "header più una riga per ogni file cestinato");
         for (String riga : reportRighe.subList(1, reportRighe.size())) {
             assertEquals("Cestinato", dividiCsv(riga)[6]);
         }
