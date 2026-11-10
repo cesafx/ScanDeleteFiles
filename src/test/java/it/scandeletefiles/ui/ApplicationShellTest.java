@@ -51,7 +51,7 @@ class ApplicationShellTest {
             Button deleteNavigation = (Button) scene.lookup("#delete-navigation");
             assertNotNull(deleteNavigation);
             deleteNavigation.fire();
-            assertEquals("Cancellazione", title(scene).getText());
+            assertEquals("Move/Delete", title(scene).getText());
             assertEnabled(scene, "#choose-delete-manifest");
 
             Button scanNavigation = (Button) scene.lookup("#scan-navigation");

@@ -47,10 +47,12 @@ public final class DeletionView implements ScreenView {
     private RadioButton moveMode;
     private TextField destination;
     private Button chooseDestination;
+    private HBox destinationRow;
     private Button action;
     private Button cancel;
     private Label status;
     private CancellableState currentOperation;
+    private boolean operationRunning;
 
     public DeletionView(DeletionApplicationService deletionService) {
         this(deletionService, DeletionView::showPermanentDeletionConfirmation, null);
@@ -76,23 +78,23 @@ public final class DeletionView implements ScreenView {
 
         manifest = new TextField();
         manifest.setId("deletion-manifest");
-        manifest.setPromptText("Manifest CSV revisionato");
-        chooseManifest = new Button("Scegli manifest");
+        manifest.setPromptText("File CSV revisionato");
+        chooseManifest = new Button("Scegli CSV");
         chooseManifest.setId("choose-delete-manifest");
         chooseManifest.setOnAction(event -> chooseManifest());
         HBox manifestRow = fieldRow(manifest, chooseManifest);
 
         ToggleGroup mode = new ToggleGroup();
-        trashMode = new RadioButton("Sposta nel cestino (predefinito)");
+        trashMode = new RadioButton("Sposta nel cestino");
         trashMode.setId("trash-deletion-mode");
         trashMode.setToggleGroup(mode);
-        trashMode.setSelected(true);
         permanentMode = new RadioButton("Cancella definitivamente");
         permanentMode.setId("permanent-deletion-mode");
         permanentMode.setToggleGroup(mode);
-        moveMode = new RadioButton("Sposta in cartella");
+        moveMode = new RadioButton("Sposta in cartella (predefinito)");
         moveMode.setId("move-deletion-mode");
         moveMode.setToggleGroup(mode);
+        moveMode.setSelected(true);
 
         destination = new TextField();
         destination.setId("move-destination");
@@ -100,9 +102,9 @@ public final class DeletionView implements ScreenView {
         chooseDestination = new Button("Scegli cartella");
         chooseDestination.setId("choose-move-destination");
         chooseDestination.setOnAction(event -> chooseDestination());
-        HBox destinationRow = fieldRow(destination, chooseDestination);
+        destinationRow = fieldRow(destination, chooseDestination);
 
-        VBox modes = new VBox(10, trashMode, permanentMode, moveMode, destinationRow);
+        VBox modes = new VBox(10, moveMode, trashMode, permanentMode, destinationRow);
         modes.getStyleClass().add("choice-panel");
 
         action = new Button(AppScreen.DELETE.actionLabel());
@@ -124,9 +126,14 @@ public final class DeletionView implements ScreenView {
 
         manifest.textProperty().addListener((observable, oldValue, newValue) -> validate());
         destination.textProperty().addListener((observable, oldValue, newValue) -> validate());
+        mode.selectedToggleProperty().addListener((observable, oldValue, newValue) -> {
+            updateDestinationState();
+            validate();
+        });
+        updateDestinationState();
 
         content.getChildren().addAll(
-                section("Manifest da elaborare", manifestRow),
+                section("File CSV da elaborare", manifestRow),
                 section("Modalità", modes),
                 new VBox(10, action, cancel, status));
         return scrollable(content);
@@ -134,9 +141,9 @@ public final class DeletionView implements ScreenView {
 
     private void chooseManifest() {
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("Scegli il manifest CSV da elaborare");
+        chooser.setTitle("Scegli il file CSV da elaborare");
         chooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("Manifest CSV (*.csv)", "*.csv"));
+                new FileChooser.ExtensionFilter("File CSV (*.csv)", "*.csv"));
         Window owner = chooseManifest.getScene() == null ? null : chooseManifest.getScene().getWindow();
         File selected = chooser.showOpenDialog(owner);
         if (selected != null) {
@@ -149,12 +156,30 @@ public final class DeletionView implements ScreenView {
         if (ready && moveMode.isSelected()) {
             ready = !destination.getText().isBlank();
         }
-        action.setDisable(!ready);
+        action.setDisable(operationRunning || !ready);
+    }
+
+    private void updateDestinationState() {
+        boolean enabled = moveMode.isSelected() && !operationRunning;
+        destination.setDisable(!enabled);
+        chooseDestination.setDisable(!enabled);
+        destinationRow.setVisible(moveMode.isSelected());
+        destinationRow.setManaged(moveMode.isSelected());
+    }
+
+    private void updateOperationControls() {
+        manifest.setDisable(operationRunning);
+        chooseManifest.setDisable(operationRunning);
+        trashMode.setDisable(operationRunning);
+        permanentMode.setDisable(operationRunning);
+        moveMode.setDisable(operationRunning);
+        updateDestinationState();
+        validate();
     }
 
     private void chooseDestination() {
         String currentValue = destination.getText().trim();
-        Path proposed = currentValue.isEmpty() ? null : Path.of(currentValue).normalize();
+        Path proposed = ViewSupport.pathOrNull(currentValue);
         if (pathChooser != null) {
             pathChooser.chooseDirectory(proposed)
                     .ifPresent(selected -> destination.setText(selected.toString()));
@@ -188,15 +213,25 @@ public final class DeletionView implements ScreenView {
             }
         } else {
             mode = DeletionMode.MOVE_TO_FOLDER;
-            destinationPath = Path.of(destination.getText().trim());
+            destinationPath = ViewSupport.pathOrNull(destination.getText().trim());
+            if (destinationPath == null) {
+                status.setText("Cartella di destinazione non valida: controlla il percorso digitato");
+                return;
+            }
+        }
+        Path manifestPath = ViewSupport.pathOrNull(manifest.getText().trim());
+        if (manifestPath == null) {
+            status.setText("File CSV non valido: controlla il percorso digitato");
+            return;
         }
         DeletionCommand command = new DeletionCommand(
-                Path.of(manifest.getText().trim()), mode, confirmed, destinationPath);
+                manifestPath, mode, confirmed, destinationPath);
 
         currentOperation = null;
-        action.setDisable(true);
+        operationRunning = true;
+        updateOperationControls();
         cancel.setDisable(false);
-        status.setText("Cancellazione in corso...");
+        status.setText("Operazione in corso...");
 
         OperationObserver ui = OperationObserver.dispatching(Platform::runLater, new OperationObserver() {
             @Override
@@ -207,7 +242,8 @@ public final class DeletionView implements ScreenView {
             @Override
             public void onFinished(OperationResult result) {
                 currentOperation = null;
-                action.setDisable(false);
+                operationRunning = false;
+                updateOperationControls();
                 cancel.setDisable(true);
                 status.setText(result.message());
             }

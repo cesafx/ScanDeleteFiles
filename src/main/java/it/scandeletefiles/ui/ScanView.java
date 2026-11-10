@@ -17,8 +17,11 @@ import it.scandeletefiles.navigation.AppScreen;
 import it.scandeletefiles.platform.PathChooserAdapter;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -35,6 +38,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.util.StringConverter;
 
 public final class ScanView implements ScreenView {
     private static final List<String> DEFAULT_EXTENSIONS = List.of(
@@ -44,6 +48,12 @@ public final class ScanView implements ScreenView {
             "POT", "POTX", "POTM", "PPS", "PPSX", "PPSM", "ODT", "ODS", "ODP", "ZIP",
             "RAR", "7Z");
     private static final DateTimeFormatter PROPOSED_NAME_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
+    private static final DateTimeFormatter DISPLAY_DATE = DateTimeFormatter.ofPattern("dd/MM/uuuu")
+            .withResolverStyle(ResolverStyle.STRICT);
+    private static final List<DateTimeFormatter> ACCEPTED_DATES = List.of(
+            DISPLAY_DATE,
+            DateTimeFormatter.ISO_LOCAL_DATE.withResolverStyle(ResolverStyle.STRICT),
+            DateTimeFormatter.ofPattern("uuuu/MM/dd").withResolverStyle(ResolverStyle.STRICT));
 
     private final ScanApplicationService scanService;
     private final ExtensionPreferences extensionsPrefs;
@@ -78,6 +88,9 @@ public final class ScanView implements ScreenView {
         HBox rootRow = fieldRow(root, chooseRoot);
 
         threshold = new DatePicker();
+        threshold.setId("scan-threshold");
+        threshold.setConverter(new ThresholdDateConverter());
+        threshold.setOnShowing(event -> commitThresholdEditor());
         threshold.setMaxWidth(Double.MAX_VALUE);
 
         extensions = new FlowPane(8, 8);
@@ -95,10 +108,10 @@ public final class ScanView implements ScreenView {
         includeHidden = new CheckBox("Includi file nascosti");
         destination = new TextField();
         destination.setId("scan-destination");
-        destination.setPromptText("Posizione e nome del manifest CSV");
+        destination.setPromptText("Posizione e nome del file CSV");
         Button chooseDestination = new Button("Scegli destinazione");
         chooseDestination.setId("choose-scan-destination");
-        chooseDestination.setOnAction(event -> chooseManifestDestination());
+        chooseDestination.setOnAction(event -> chooseCsvDestination());
 
         action = new Button(AppScreen.SCAN.actionLabel());
         action.setDisable(true);
@@ -131,19 +144,31 @@ public final class ScanView implements ScreenView {
                 section("Data limite esclusiva", threshold),
                 section("Formati da includere", extensions),
                 includeHidden,
-                section("Manifest CSV", fieldRow(destination, chooseDestination)),
+                section("File CSV di output", fieldRow(destination, chooseDestination)),
                 new VBox(10, action, status));
         return scrollable(content);
     }
 
     private void chooseRootFolder() {
-        pathChooser.chooseDirectory(pathOrNull(root.getText()))
+        pathChooser.chooseDirectory(ViewSupport.pathOrNull(root.getText()))
                 .ifPresent(selected -> root.setText(selected.toString()));
     }
 
-    private void chooseManifestDestination() {
-        pathChooser.chooseCsvDestination(pathOrNull(destination.getText()))
+    private void chooseCsvDestination() {
+        pathChooser.chooseCsvDestination(ViewSupport.pathOrNull(destination.getText()))
                 .ifPresent(selected -> destination.setText(selected.toString()));
+    }
+
+    private void commitThresholdEditor() {
+        String text = threshold.getEditor().getText();
+        try {
+            LocalDate parsed = threshold.getConverter().fromString(text);
+            if (parsed != null) {
+                threshold.setValue(parsed);
+            }
+        } catch (RuntimeException invalidDate) {
+            // Una data non valida resta nel campo per consentire all'utente di correggerla.
+        }
     }
 
     private static Path pathOrNull(String value) {
@@ -159,6 +184,7 @@ public final class ScanView implements ScreenView {
 
 
     private void validate() {
+        commitThresholdEditor();
         boolean ready = !root.getText().isBlank()
                 && threshold.getValue() != null
                 && !destination.getText().isBlank();
@@ -200,7 +226,7 @@ public final class ScanView implements ScreenView {
                 currentOperation = null;
                 action.setDisable(false);
                 cancel.setDisable(true);
-                String suffix = result.status() == OperationStatus.COMPLETED ? " — manifest scritto" : "";
+                String suffix = result.status() == OperationStatus.COMPLETED ? " — file CSV scritto" : "";
                 status.setText(result.message() + suffix);
             }
         });
@@ -215,5 +241,28 @@ public final class ScanView implements ScreenView {
                 .map(checkBox -> checkBox.getText().toUpperCase(Locale.ROOT))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         extensionsPrefs.replaceSelection(selected);
+    }
+
+    private static final class ThresholdDateConverter extends StringConverter<LocalDate> {
+        @Override
+        public String toString(LocalDate date) {
+            return date == null ? "" : DISPLAY_DATE.format(date);
+        }
+
+        @Override
+        public LocalDate fromString(String text) {
+            if (text == null || text.isBlank()) {
+                return null;
+            }
+            String value = text.trim();
+            for (DateTimeFormatter formatter : ACCEPTED_DATES) {
+                try {
+                    return LocalDate.parse(value, formatter);
+                } catch (DateTimeParseException ignored) {
+                    // Prova il formato successivo.
+                }
+            }
+            throw new IllegalArgumentException("Data non valida: " + text);
+        }
     }
 }

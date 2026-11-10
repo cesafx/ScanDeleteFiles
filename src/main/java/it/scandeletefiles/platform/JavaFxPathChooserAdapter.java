@@ -23,7 +23,7 @@ public final class JavaFxPathChooserAdapter implements PathChooserAdapter {
     @Override
     public Optional<Path> chooseCsvDestination(Path proposedDestination) {
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("Scegli dove salvare il manifest CSV");
+        chooser.setTitle("Scegli dove salvare il file CSV");
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("File CSV (*.csv)", "*.csv"));
         if (proposedDestination != null) {
             Path parent = proposedDestination.getParent();

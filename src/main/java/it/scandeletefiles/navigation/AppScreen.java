@@ -3,12 +3,12 @@ package it.scandeletefiles.navigation;
 public enum AppScreen {
     SCAN(
             "Scansione",
-            "Crea un manifest CSV dei file che corrispondono ai criteri scelti.",
+            "Crea un file CSV con i file che corrispondono ai criteri scelti.",
             "Avvia scansione"),
     DELETE(
-            "Cancellazione",
-            "Controlla un manifest revisionato e tratta soltanto le righe approvate.",
-            "Avvia cancellazione");
+            "Move/Delete",
+            "Elabora il CSV revisionato e tratta soltanto le righe approvate.",
+            "Avvia operazione");
 
     private final String title;
     private final String description;

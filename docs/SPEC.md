@@ -153,6 +153,12 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 104. Come utente, voglio che il log di scansione riporti le esclusioni per formato, con conteggio e percentuale sul totale visitato dei file scartati perché non inclusi nei filtri selezionati, così da capire se occorre aggiungere la gestione di un nuovo tipo documento.
 105. Come utente, voglio che durante la scansione di grandi quantità di documenti l'interfaccia indichi in modo continuo se l'operazione è attiva (esaminando file, scrivendo il manifesto, scrivendo il log di audit), così da sapere che l'applicazione non si è bloccata.
 106. Come utente, voglio che il report CSV e il log prodotti dall'elaborazione del manifest siano denominati in base all'azione effettuata (`trash`, `deleting` o `moving`), così da riconoscere immediatamente il tipo di operazione.
+107. Come utente finale, voglio che l'interfaccia chiami gli output “file CSV” e non “manifest”, così da usare termini comprensibili e orientati all'uso.
+108. Come utente, voglio trovare nel log di scansione la cartella analizzata e la data soglia esclusiva, così da ricostruire i parametri usati.
+109. Come utente, voglio che il calendario della data soglia si apra sulla data valida inserita manualmente, così da poterla correggere o confermare senza tornare alla data odierna.
+110. Come utente, voglio che la seconda schermata si chiami **Move/Delete**, che lo spostamento sia predefinito e che la destinazione sia richiesta solo per tale modalità.
+111. Come utente, voglio selezionare una cartella, non un file, come destinazione dello spostamento.
+112. Come utente, voglio che lo spostamento dei file non alteri la data di ultima modifica delle cartelle sorgenti, così da preservarne i metadati.
 
 ## Implementation Decisions
 
@@ -169,7 +175,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 
 ### Struttura funzionale
 
-- L’interfaccia avrà due schermate principali: **Scansione** e **Cancellazione**.
+- L’interfaccia avrà due schermate principali: **Scansione** e **Move/Delete**.
 - Le operazioni lunghe non dovranno bloccare l’interfaccia.
 - Entrambe le operazioni esporranno avanzamento e annullamento.
 - La scansione e la cancellazione saranno servizi applicativi distinti dall’interfaccia JavaFX, così da poter verificare il comportamento senza pilotare necessariamente la UI.
@@ -186,6 +192,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 - Una casella di controllo permetterà di includere i file nascosti.
 - Gli errori di accesso saranno raccolti e riportati senza interrompere automaticamente l’intera scansione.
 - La data limite verrà scelta con un `DatePicker`.
+- Se l'utente inserisce manualmente una data valida, l'apertura del calendario userà tale data come valore corrente; saranno accettati almeno `dd/MM/yyyy`, `yyyy/MM/dd` e `yyyy-MM-dd`.
 - La soglia temporale sarà l’inizio della data selezionata, alle ore 00:00.
 - Saranno inclusi soltanto i file con istante di ultima modifica strettamente precedente a tale soglia.
 - Il confronto delle estensioni sarà case-insensitive.
@@ -198,13 +205,13 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
   - `ODT`, `ODS`, `ODP`;
   - `ZIP`, `RAR`, `7Z`.
 - La configurazione della checklist sarà persistente.
-- L’utente sceglierà posizione e nome del manifest.
+- L’utente sceglierà posizione e nome del file CSV; nell'interfaccia gli output non saranno chiamati “manifest”.
 - L’interfaccia proporrà un nome con timestamp, senza impedire all’utente di modificarlo.
 - Il manifest non sovrascriverà mai un file o un audit esistente: in caso di collisione verrà aggiunto un suffisso numerico (`_2`, `_3`, ...), comunicando nell’esito il percorso effettivo.
 - Il manifest finale non sarà pubblicato se la scansione viene annullata.
 - La strategia concreta per evitare la presenza di un manifest parziale dovrà garantire che il percorso finale contenga soltanto un file completato.
 - Durante la scansione l'interfaccia riceverà aggiornamenti di progresso anche per i file visitati ma non corrispondenti ai filtri, con conteggio dei file esclusi, così che l'utente veda che l'operazione è attiva anche su grandi volumi di documenti.
-- Al termine della scansione, prima di pubblicare il manifest, l'interfaccia riceverà stati intermedi ("Scrittura manifest CSV in corso...", "Scrittura log di audit in corso...").
+- Al termine della scansione, prima di pubblicare il CSV, l'interfaccia riceverà stati intermedi ("Scrittura file CSV in corso...", "Scrittura log di audit in corso...").
 - Il log di audit di scansione includerà una sezione "Esclusioni per formato" con conteggio e percentuale sul totale visitato per ogni estensione scartata perché non inclusa nei filtri selezionati, oltre al totale complessivo delle esclusioni.
 
 ### Contratto del manifest CSV
@@ -247,7 +254,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 
 ### Modalità di cancellazione
 
-- La modalità predefinita sarà lo spostamento nel cestino attraverso la capacità disponibile sulla piattaforma.
+- La modalità predefinita sarà lo spostamento in una cartella scelta dall'utente.
 - Per la modalità cestino non sarà mostrata una schermata riepilogativa.
 - Per la modalità cestino non sarà richiesta una conferma aggiuntiva.
 - La cancellazione permanente sarà opzionale.
@@ -255,10 +262,11 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 - Se il cestino non è disponibile, il file sarà saltato e l’indisponibilità sarà riportata.
 - Non sarà mai effettuato un fallback automatico dalla modalità cestino alla cancellazione permanente.
 - L’integrazione con il cestino sarà isolata dietro un seam di piattaforma, così da distinguere capacità disponibile, successo e fallimento senza vincolare le regole applicative a una specifica implementazione nativa.
-- Lo spostamento in una cartella di destinazione scelta dall'utente sarà una modalità opzionale della cancellazione.
-- La modalità di spostamento richiederà la selezione esplicita della cartella di destinazione prima dell'avvio.
+- La destinazione sarà selezionata con un selettore di cartelle e i relativi controlli saranno attivi e visibili solo quando è selezionata la modalità di spostamento.
+- Cestino e cancellazione definitiva non richiederanno né attiveranno il campo della cartella di destinazione.
 - Se un file con lo stesso nome esiste già nella cartella di destinazione, verrà aggiunto un suffisso numerico (_2, _3, ...) per evitare sovrascritture.
 - Lo spostamento non richiederà una schermata riepilogativa né una conferma aggiuntiva.
+- Dopo ogni operazione di spostamento saranno ripristinate le date di ultima modifica delle cartelle sorgenti, anche quando report e log vengono scritti nella stessa cartella.
 
 ### Annullamento
 
@@ -291,6 +299,8 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
   - data e ora di inizio;
   - data e ora di fine;
   - durata;
+  - cartella analizzata;
+  - data soglia esclusiva;
   - conteggio degli elementi visitati;
   - conteggio dei file corrispondenti;
   - percentuali per formato tra i file corrispondenti;

@@ -11,6 +11,7 @@ import it.scandeletefiles.application.OperationProgress;
 import it.scandeletefiles.application.OperationResult;
 import it.scandeletefiles.application.OperationStatus;
 import it.scandeletefiles.platform.SettingsAdapter;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -192,6 +193,80 @@ class MoveToFolderDeletionTest {
         String[] parts = lines.get(1).split(";", -1);
         assertEquals("Spostato", parts[6]);
         assertTrue(parts[7].contains("duplicato_2.txt"), "il dettaglio deve indicare la destinazione effettiva");
+    }
+
+    @Test
+    void spostamentoRipristinaDataModificaDellaCartellaSorgente(@TempDir Path root) throws Exception {
+        Path source = Files.createDirectory(root.resolve("sorgente"));
+        Path destination = Files.createDirectory(root.resolve("destinazione"));
+        Path file = source.resolve("documento.txt");
+        Files.writeString(file, "contenuto");
+        Files.setLastModifiedTime(file, FileTime.from(Instant.parse("2026-11-09T23:00:00Z")));
+        Path inputCsv = source.resolve("elenco.csv");
+        Files.writeString(inputCsv, "\uFEFF"
+                + "Nome file;Path cartella;Path completo;Formato file;Data ultima modifica;Delete\n"
+                + "documento.txt;" + source + ";" + file + ";TXT;2026/11/09;Yes\n",
+                StandardCharsets.UTF_8);
+        FileTime originalFolderTime = FileTime.from(Instant.parse("2024-03-04T05:06:07Z"));
+        Files.setLastModifiedTime(source, originalFolderTime);
+
+        DeletionEngine engine = new DeletionEngine(platform().trash(), platform().clock());
+        CountDownLatch finished = new CountDownLatch(1);
+        engine.start(new DeletionCommand(inputCsv, DeletionMode.MOVE_TO_FOLDER, false, destination),
+                new OperationObserver() {
+                    @Override
+                    public void onProgress(OperationProgress progress) {
+                    }
+
+                    @Override
+                    public void onFinished(OperationResult result) {
+                        finished.countDown();
+                    }
+                });
+
+        assertTrue(finished.await(30, TimeUnit.SECONDS));
+        assertEquals(originalFolderTime, Files.getLastModifiedTime(source),
+                "la cartella sorgente deve conservare la propria data di modifica");
+        assertTrue(Files.exists(destination.resolve("documento.txt")));
+    }
+
+    @Test
+    void erroreNelRipristinoDataRendeOperazioneFallitaELoRegistra(@TempDir Path root) throws Exception {
+        Path source = Files.createDirectory(root.resolve("sorgente"));
+        Path destination = Files.createDirectory(root.resolve("destinazione"));
+        Path file = source.resolve("documento.txt");
+        Files.writeString(file, "contenuto");
+        Files.setLastModifiedTime(file, FileTime.from(Instant.parse("2026-11-09T23:00:00Z")));
+        Path inputCsv = source.resolve("elenco.csv");
+        Files.writeString(inputCsv, "\uFEFF"
+                + "Nome file;Path cartella;Path completo;Formato file;Data ultima modifica;Delete\n"
+                + "documento.txt;" + source + ";" + file + ";TXT;2026/11/09;Yes\n",
+                StandardCharsets.UTF_8);
+        DeletionEngine engine = new DeletionEngine(platform().trash(), platform().clock(),
+                (directory, timestamp) -> {
+                    throw new IOException("ripristino non consentito");
+                });
+        CountDownLatch finished = new CountDownLatch(1);
+        AtomicReference<OperationResult> result = new AtomicReference<>();
+
+        engine.start(new DeletionCommand(inputCsv, DeletionMode.MOVE_TO_FOLDER, false, destination),
+                new OperationObserver() {
+                    @Override
+                    public void onProgress(OperationProgress progress) {
+                    }
+
+                    @Override
+                    public void onFinished(OperationResult operationResult) {
+                        result.set(operationResult);
+                        finished.countDown();
+                    }
+                });
+
+        assertTrue(finished.await(30, TimeUnit.SECONDS));
+        assertEquals(OperationStatus.FAILED, result.get().status());
+        String audit = Files.readString(source.resolve("moving_elenco.log"), StandardCharsets.UTF_8);
+        assertTrue(audit.contains("Stato: FALLITA"));
+        assertTrue(audit.contains("ripristino non consentito"));
     }
 
     @Test
