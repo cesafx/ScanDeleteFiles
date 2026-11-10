@@ -53,7 +53,7 @@ class PermanentDeletionConfirmationUiTest {
     }
 
     @Test
-    void cestinoEPredefinitoENonRichiedeConferma(@TempDir Path root) throws Exception {
+    void spostamentoEPredefinitoENonRichiedeConferma(@TempDir Path root) throws Exception {
         ControlledDeletionService service = new ControlledDeletionService();
         AtomicInteger confirmations = new AtomicInteger();
 
@@ -62,14 +62,73 @@ class PermanentDeletionConfirmationUiTest {
                 confirmations.incrementAndGet();
                 return PermanentDeletionConfirmation.Result.CONFIRMED;
             }));
+            destination(scene).setText(root.resolve("destinazione").toString());
             start(scene, root.resolve("manifest.csv"));
             return null;
         });
 
         assertEquals(0, confirmations.get());
         assertEquals(1, service.starts.get());
-        assertEquals(DeletionMode.TRASH, service.command.get().mode());
+        assertEquals(DeletionMode.MOVE_TO_FOLDER, service.command.get().mode());
+        assertEquals(root.resolve("destinazione"), service.command.get().destination());
         assertFalse(service.command.get().permanentDeletionConfirmed());
+    }
+
+    @Test
+    void destinazioneEAttivaSoloPerSpostaInCartella() throws Exception {
+        runOnFxThread(() -> {
+            Scene scene = scene(new DeletionView(new ControlledDeletionService(),
+                    warning -> PermanentDeletionConfirmation.Result.REJECTED));
+            RadioButton move = (RadioButton) scene.lookup("#move-deletion-mode");
+            RadioButton trash = (RadioButton) scene.lookup("#trash-deletion-mode");
+            RadioButton permanent = (RadioButton) scene.lookup("#permanent-deletion-mode");
+            TextField destination = destination(scene);
+            Button chooser = (Button) scene.lookup("#choose-move-destination");
+
+            assertTrue(move.isSelected());
+            assertFalse(destination.isDisabled());
+            assertFalse(chooser.isDisabled());
+
+            trash.setSelected(true);
+            assertTrue(destination.isDisabled());
+            assertTrue(chooser.isDisabled());
+
+            permanent.setSelected(true);
+            assertTrue(destination.isDisabled());
+            assertTrue(chooser.isDisabled());
+
+            move.setSelected(true);
+            assertFalse(destination.isDisabled());
+            assertFalse(chooser.isDisabled());
+            return null;
+        });
+    }
+
+    @Test
+    void operazioneInCorsoMantieneDisabilitatiAvvioEControlli(@TempDir Path root) throws Exception {
+        ControlledDeletionService service = new ControlledDeletionService();
+
+        runOnFxThread(() -> {
+            Scene scene = scene(new DeletionView(service,
+                    warning -> PermanentDeletionConfirmation.Result.REJECTED));
+            destination(scene).setText(root.resolve("destinazione").toString());
+            start(scene, root.resolve("elenco.csv"));
+
+            Button action = (Button) scene.lookup("#avvia-cancellazione");
+            RadioButton trash = (RadioButton) scene.lookup("#trash-deletion-mode");
+            TextField csv = (TextField) scene.lookup("#deletion-manifest");
+            assertTrue(action.isDisabled());
+            assertTrue(trash.isDisabled());
+            assertTrue(csv.isDisabled());
+
+            trash.setSelected(true);
+            csv.setText(root.resolve("altro.csv").toString());
+            assertTrue(action.isDisabled());
+            action.fire();
+            return null;
+        });
+
+        assertEquals(1, service.starts.get());
     }
 
     @Test
@@ -148,6 +207,12 @@ class PermanentDeletionConfirmationUiTest {
         assertNotNull(action);
         assertFalse(action.isDisabled());
         action.fire();
+    }
+
+    private static TextField destination(Scene scene) {
+        TextField destination = (TextField) scene.lookup("#move-destination");
+        assertNotNull(destination);
+        return destination;
     }
 
     private static <T> T runOnFxThread(Callable<T> callable) throws Exception {

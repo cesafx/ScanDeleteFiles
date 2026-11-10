@@ -12,6 +12,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -22,6 +23,7 @@ import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -71,10 +73,21 @@ public final class DeletionEngine implements DeletionApplicationService {
 
     private final TrashAdapter trash;
     private final Clock clock;
+    private final DirectoryTimeRestorer directoryTimeRestorer;
+
+    @FunctionalInterface
+    interface DirectoryTimeRestorer {
+        void restore(Path directory, FileTime timestamp) throws IOException;
+    }
 
     public DeletionEngine(TrashAdapter trash, Clock clock) {
+        this(trash, clock, Files::setLastModifiedTime);
+    }
+
+    DeletionEngine(TrashAdapter trash, Clock clock, DirectoryTimeRestorer directoryTimeRestorer) {
         this.trash = Objects.requireNonNull(trash, "trash");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.directoryTimeRestorer = Objects.requireNonNull(directoryTimeRestorer, "directoryTimeRestorer");
     }
 
     @Override
@@ -163,6 +176,7 @@ public final class DeletionEngine implements DeletionApplicationService {
         int saltate;
         int errori;
         final Map<String, Integer> perFormat = new TreeMap<>();
+        final Map<Path, FileTime> sourceDirectoryTimes = new LinkedHashMap<>();
         final List<CsvRow> rows = new ArrayList<>();
         final List<RowOutcome> outcomes = new ArrayList<>();
     }
@@ -184,7 +198,7 @@ public final class DeletionEngine implements DeletionApplicationService {
             DeletionContext context = new DeletionContext();
             try {
                 outputPaths = resolveOutputPaths(command.manifest(), command.mode());
-                notifyProgress(OperationProgress.indeterminate(0, "Avvio cancellazione"));
+                notifyProgress(OperationProgress.indeterminate(0, "Avvio operazione Move/Delete"));
                 context.rows.addAll(readManifest(command.manifest()));
                 context.controllate = context.rows.size();
                 for (CsvRow row : context.rows) {
@@ -212,8 +226,15 @@ public final class DeletionEngine implements DeletionApplicationService {
                 String note = cancellationRequested
                         ? "Annullata dall'utente prima del completamento" : null;
                 writeReport(command.manifest(), context.rows, context.outcomes);
-                writeAudit(command.manifest(), status, start, clock.instant(), context,
-                        note);
+                writeAudit(command.manifest(), status, start, clock.instant(), context, note);
+                List<String> metadataErrors = restoreSourceDirectoryTimes(context);
+                if (!metadataErrors.isEmpty()) {
+                    context.errori += metadataErrors.size();
+                    status = OperationStatus.FAILED;
+                    note = appendNote(note, String.join("; ", metadataErrors));
+                    writeAudit(command.manifest(), status, start, clock.instant(), context, note);
+                    restoreSourceDirectoryTimes(context);
+                }
                 notifyFinished(new OperationResult(status, messaggioFinale(status, context)));
             } catch (Exception exc) {
                 failed(start, context, exc);
@@ -240,7 +261,7 @@ public final class DeletionEngine implements DeletionApplicationService {
             if (!row.coerente()) {
                 context.errori++;
                 return new RowOutcome(ESITO_ERRORE,
-                        "Riga del manifest incoerente: Path completo, Nome file, Path cartella e Formato file non corrispondono; file conservato");
+                        "Riga del CSV incoerente: Path completo, Nome file, Path cartella e Formato file non corrispondono; file conservato");
             }
 
             String fullPath = row.fullPath();
@@ -258,14 +279,14 @@ public final class DeletionEngine implements DeletionApplicationService {
                 if (manifestDate == null) {
                     context.errori++;
                     return new RowOutcome(ESITO_ERRORE,
-                            "Data ultima modifica non valida nel manifest: " + fullPath);
+                            "Data ultima modifica non valida nel CSV: " + fullPath);
                 }
                 Instant modified = Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS).toInstant();
                 LocalDate currentDate = LocalDateTime.ofInstant(modified, clock.getZone()).toLocalDate();
                 if (!currentDate.equals(manifestDate)) {
                     context.saltate++;
                     return new RowOutcome(ESITO_SALTATO,
-                            "Data ultima modifica non corrispondente al manifest: file conservato");
+                            "Data ultima modifica non corrispondente al CSV: file conservato");
                 }
             } catch (IOException exc) {
                 context.errori++;
@@ -313,16 +334,21 @@ public final class DeletionEngine implements DeletionApplicationService {
                     Path targetDir = command.destination();
                     Path target = targetDir.resolve(file.getFileName());
                     Path uniqueTarget = uniqueDestination(target);
+                    Path sourceDirectory = file.getParent();
                     try {
+                        if (sourceDirectory != null && !context.sourceDirectoryTimes.containsKey(sourceDirectory)) {
+                            context.sourceDirectoryTimes.put(sourceDirectory,
+                                    Files.getLastModifiedTime(sourceDirectory, LinkOption.NOFOLLOW_LINKS));
+                        }
                         Files.move(file, uniqueTarget, StandardCopyOption.REPLACE_EXISTING);
-                        context.spostati++;
-                        return new RowOutcome(ESITO_SPOSTATO,
-                                "Spostato in: " + uniqueTarget);
                     } catch (IOException exc) {
                         context.errori++;
                         return new RowOutcome(ESITO_ERRORE,
                                 "Impossibile spostare il file: " + exc.getMessage());
                     }
+                    context.spostati++;
+                    return new RowOutcome(ESITO_SPOSTATO,
+                            "Spostato in: " + uniqueTarget);
                 }
                 default -> {
                     context.errori++;
@@ -340,16 +366,16 @@ public final class DeletionEngine implements DeletionApplicationService {
         private List<CsvRow> readManifest(Path manifest) throws IOException {
             List<String> lines = Files.readAllLines(manifest, StandardCharsets.UTF_8);
             if (lines.isEmpty()) {
-                throw new IOException("Il manifest CSV è vuoto");
+                throw new IOException("Il file CSV è vuoto");
             }
             String header = lines.get(0);
             if (!header.startsWith(BOM)) {
                 throw new IOException(
-                        "Il manifest CSV deve iniziare con il BOM UTF-8: contratto non conforme");
+                        "Il file CSV deve iniziare con il BOM UTF-8: contratto non conforme");
             }
             header = header.substring(1);
             if (!header.equals(String.join(String.valueOf(CSV_SEPARATOR), COLUMNS))) {
-                throw new IOException("Intestazione del manifest CSV non conforme al contratto");
+                throw new IOException("Intestazione del file CSV non conforme al contratto");
             }
             List<CsvRow> rows = new ArrayList<>();
             for (int i = 1; i < lines.size(); i++) {
@@ -434,7 +460,7 @@ public final class DeletionEngine implements DeletionApplicationService {
             ZoneId zone = clock.getZone();
             Path audit = outputPaths.audit();
             List<String> lines = new ArrayList<>();
-            lines.add("ScanDeleteFiles — Audit di cancellazione");
+            lines.add("ScanDeleteFiles — Audit Move/Delete");
             lines.add("");
             lines.add("Stato: " + CsvFormat.statoItaliano(status));
             lines.add("Inizio: " + LocalDateTime.ofInstant(start, zone).format(TIMESTAMP_FORMAT));
@@ -473,17 +499,34 @@ public final class DeletionEngine implements DeletionApplicationService {
 
         private static String messaggioFinale(OperationStatus status, DeletionContext context) {
             return switch (status) {
-                case COMPLETED -> "Cancellazione completata: " + context.cestinati + " cestinati, "
+                case COMPLETED -> "Operazione completata: " + context.cestinati + " cestinati, "
                         + context.eliminatiPermanentemente + " eliminati definitivamente, "
                         + context.spostati + " spostati, "
                         + context.saltate + " saltati, " + context.errori + " errori";
-                case CANCELLED -> "Cancellazione annullata: " + context.elaborate + " / "
+                case CANCELLED -> "Operazione annullata: " + context.elaborate + " / "
                         + context.controllate + " righe elaborate, " + context.cestinati + " cestinati, "
                         + context.eliminatiPermanentemente + " eliminati definitivamente, "
                         + context.spostati + " spostati, "
                         + context.saltate + " saltati, " + context.errori + " errori";
-                case FAILED -> "Cancellazione fallita";
+                case FAILED -> "Operazione fallita";
             };
+        }
+
+        private List<String> restoreSourceDirectoryTimes(DeletionContext context) {
+            List<String> errors = new ArrayList<>();
+            for (Map.Entry<Path, FileTime> entry : context.sourceDirectoryTimes.entrySet()) {
+                try {
+                    directoryTimeRestorer.restore(entry.getKey(), entry.getValue());
+                } catch (IOException exc) {
+                    errors.add("Impossibile ripristinare la data della cartella sorgente "
+                            + entry.getKey() + ": " + exc.getMessage());
+                }
+            }
+            return errors;
+        }
+
+        private static String appendNote(String note, String addition) {
+            return note == null || note.isBlank() ? addition : note + "; " + addition;
         }
 
         private static OperationProgress progress(DeletionContext context) {
@@ -586,10 +629,22 @@ public final class DeletionEngine implements DeletionApplicationService {
                 writeAudit(command.manifest(), OperationStatus.FAILED, start, clock.instant(), context,
                         note);
             } catch (IOException ioExc) {
-                // il log di audit non \u00e8 scrivibile: l'esito \u00e8 comunque segnato come fallito
+                // il log di audit non è scrivibile: l'esito è comunque segnato come fallito
+            }
+            List<String> metadataErrors = restoreSourceDirectoryTimes(context);
+            if (!metadataErrors.isEmpty()) {
+                context.errori += metadataErrors.size();
+                note = appendNote(note, String.join("; ", metadataErrors));
+                try {
+                    writeAudit(command.manifest(), OperationStatus.FAILED, start, clock.instant(), context,
+                            note);
+                } catch (IOException ignored) {
+                    // Il fallimento resta comunque comunicato all'interfaccia.
+                }
+                restoreSourceDirectoryTimes(context);
             }
             notifyFinished(new OperationResult(OperationStatus.FAILED,
-                    "Cancellazione fallita: " + exc.getMessage()));
+                    "Operazione fallita: " + exc.getMessage()));
         }
 
         private static void completeFailureOutcomes(DeletionContext context, Exception exc) {

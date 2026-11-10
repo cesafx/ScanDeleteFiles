@@ -9,15 +9,19 @@ import it.scandeletefiles.application.ExtensionPreferences;
 import it.scandeletefiles.platform.PathChooserAdapter;
 import it.scandeletefiles.platform.SettingsAdapter;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.Optional;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javafx.application.Platform;
+import javafx.event.Event;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.DatePicker;
 import javafx.scene.control.TextField;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -118,9 +122,46 @@ class ScanPathChooserUiTest {
             assertNotNull(chooseDestination);
             assertNotNull(destinationField);
 
+            destinationField.setText("percorso\u0000non-valido");
             chooseDestination.fire();
             assertEquals(destination.toString(), destinationField.getText());
             assertFalse(csvChooserInvoked.get());
+            return null;
+        });
+    }
+
+    @Test
+    void calendarioParteDallaDataValidaInseritaManualmente(@TempDir Path root) throws Exception {
+        PathChooserAdapter chooser = new PathChooserAdapter() {
+            @Override
+            public Optional<Path> chooseDirectory(Path initialDirectory) {
+                return Optional.of(root);
+            }
+
+            @Override
+            public Optional<Path> chooseCsvDestination(Path proposedDestination) {
+                return Optional.of(root.resolve("elenco.csv"));
+            }
+        };
+
+        runOnFxThread(() -> {
+            ScanView view = new ScanView((command, observer) -> NO_OP, preferences(), chooser);
+            Parent parent = view.createView();
+            Scene scene = new Scene(parent);
+            parent.applyCss();
+            parent.layout();
+            DatePicker threshold = (DatePicker) scene.lookup("#scan-threshold");
+            assertNotNull(threshold);
+
+            assertNotNull(threshold.getOnShowing());
+            for (Map.Entry<String, LocalDate> sample : Map.of(
+                    "15/12/2025", LocalDate.of(2025, 12, 15),
+                    "2025/11/14", LocalDate.of(2025, 11, 14),
+                    "2025-10-13", LocalDate.of(2025, 10, 13)).entrySet()) {
+                threshold.getEditor().setText(sample.getKey());
+                threshold.getOnShowing().handle(new Event(Event.ANY));
+                assertEquals(sample.getValue(), threshold.getValue());
+            }
             return null;
         });
     }

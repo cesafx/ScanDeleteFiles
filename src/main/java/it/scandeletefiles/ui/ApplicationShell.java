@@ -19,7 +19,7 @@ public final class ApplicationShell {
     private final ScreenView deletionView;
     private final BorderPane shell = new BorderPane();
     private final Button scanNavigation = navigationButton("Scansione", "scan-navigation");
-    private final Button deleteNavigation = navigationButton("Cancellazione", "delete-navigation");
+    private final Button deleteNavigation = navigationButton("Move/Delete", "delete-navigation");
 
     public ApplicationShell(NavigationModel navigation, ScreenView scanView, ScreenView deletionView) {
         this.navigation = Objects.requireNonNull(navigation, "navigation");

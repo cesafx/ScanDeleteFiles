@@ -159,10 +159,10 @@ class ScanExclusionsAndProgressTest {
 
         // Gli stati intermedi di scrittura devono essere presenti
         boolean sawManifestWriting = progress.stream()
-                .anyMatch(p -> p.message().contains("Scrittura manifest CSV in corso"));
+                .anyMatch(p -> p.message().contains("Scrittura file CSV in corso"));
         boolean sawAuditWriting = progress.stream()
                 .anyMatch(p -> p.message().contains("Scrittura log di audit in corso"));
-        assertTrue(sawManifestWriting, "l'interfaccia deve ricevere lo stato di scrittura del manifest");
+        assertTrue(sawManifestWriting, "l'interfaccia deve ricevere lo stato di scrittura del file CSV");
         assertTrue(sawAuditWriting, "l'interfaccia deve ricevere lo stato di scrittura del log di audit");
     }
 

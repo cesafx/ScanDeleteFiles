@@ -11,6 +11,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import java.nio.file.Path;
 
 final class ViewSupport {
     private ViewSupport() {}
@@ -73,5 +74,16 @@ final class ViewSupport {
         button.setId(id);
         button.setDisable(true);
         return button;
+    }
+
+    static Path pathOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Path.of(value.trim()).normalize();
+        } catch (RuntimeException invalidPath) {
+            return null;
+        }
     }
 }

@@ -26,8 +26,8 @@ class NavigationModelTest {
     @Test
     void exposesItalianScreenCopy() {
         assertEquals("Scansione", AppScreen.SCAN.title());
-        assertEquals("Cancellazione", AppScreen.DELETE.title());
+        assertEquals("Move/Delete", AppScreen.DELETE.title());
         assertEquals("Avvia scansione", AppScreen.SCAN.actionLabel());
-        assertEquals("Avvia cancellazione", AppScreen.DELETE.actionLabel());
+        assertEquals("Avvia operazione", AppScreen.DELETE.actionLabel());
     }
 }

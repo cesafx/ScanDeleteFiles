@@ -100,6 +100,10 @@ class ScanAuditLogTest {
         assertTrue(log.contains("Inizio:"), "l'audit deve riportare l'inizio");
         assertTrue(log.contains("Fine:"), "l'audit deve riportare la fine");
         assertTrue(log.contains("Durata:"), "l'audit deve riportare la durata");
+        assertTrue(log.contains("Cartella analizzata: " + root),
+                "l'audit deve riportare la cartella analizzata");
+        assertTrue(log.contains("Data soglia esclusiva: 2026/11/10"),
+                "l'audit deve riportare la data soglia ricevuta in input");
         assertTrue(log.contains("Elementi visitati: 4"), "l'audit deve contare gli elementi visitati");
         assertTrue(log.contains("File corrispondenti: 2"), "l'audit deve contare i file conformi");
         assertTrue(log.contains("Percentuali per formato:"), "l'audit deve riportare le percentuali per formato");

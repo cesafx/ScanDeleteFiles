@@ -4,17 +4,15 @@ Applicazione desktop in Java 21 e JavaFX per individuare file obsoleti, revision
 
 ## Stato
 
-È disponibile la base eseguibile Java 21/JavaFX con le schermate **Scansione** e
-**Cancellazione**. I comandi operativi sono intenzionalmente disabilitati: il
-motore di scansione e cancellazione non è ancora implementato e la UI non
-produce risultati simulati.
+È disponibile l'applicazione Java 21/JavaFX con le schermate **Scansione** e
+**Move/Delete**, i motori operativi e la produzione dei relativi CSV e log.
 
 ## Obiettivo MVP
 
 - scansione ricorsiva di cartelle locali, montate o UNC;
 - filtro per data e formati configurabili;
-- manifest CSV compatibile con Excel italiano;
-- cancellazione da CSV verso cestino o, previa conferma, definitiva;
+- file CSV compatibile con Excel italiano;
+- elaborazione da CSV con spostamento in cartella, cestino o cancellazione definitiva;
 - report CSV e audit log italiano per ogni operazione;
 - distribuzione Windows come ZIP portabile con runtime incluso.
 
@@ -50,7 +48,7 @@ xvfb-run -a ./mvnw -B test
 ```
 
 La schermata iniziale è **Scansione**. La barra laterale permette di passare a
-**Cancellazione** e tornare indietro.
+**Move/Delete** e tornare indietro.
 
 ## Struttura
 
@@ -78,7 +76,7 @@ installazione.
 
 ## Limiti del cestino
 
-Il cestino è la destinazione predefinita della cancellazione. Su Windows, nel
+Lo spostamento in una cartella scelta dall'utente è l'azione predefinita. Su Windows, nel
 l'MVP, l'integrazione nativa con il cestino di sistema non è inclusa: se il
 cestino non è disponibile il file viene saltato e segnalato nell'esito, senza
 passare automaticamente alla cancellazione permanente.
@@ -91,9 +89,9 @@ permanente: se il cestino non è disponibile, il file non viene eliminato.
 
 ## CSV e report
 
-Il manifest di scansione è un CSV UTF-8 con BOM, delimitato da punto e
+Il file CSV prodotto dalla scansione usa UTF-8 con BOM ed è delimitato da punto e
 virgola, con sei colonne (`Nome file`, `Path cartella`, `Path completo`,
 `Formato file`, `Data ultima modifica`, `Delete`) inizializzate a `Delete=Yes`.
-Il report di cancellazione aggiunge le colonne `Esito` e `Dettaglio` e viene
-salvato accanto al manifest di input. L'audit log (`.log`) viene prodotto in
-italiano per ogni scansione e cancellazione.
+Il CSV finale dell'operazione aggiunge le colonne `Esito` e `Dettaglio` e viene
+salvato accanto al CSV di input. L'audit log (`.log`) viene prodotto in
+italiano per ogni scansione e operazione Move/Delete.

@@ -205,7 +205,7 @@ public final class ScanEngine implements ScanApplicationService {
         private void complete(Instant start, Clock clock, ScanContext context) throws IOException {
             Instant end = clock.instant();
             notifyProgress(OperationProgress.indeterminate(context.visited,
-                    "Scrittura manifest CSV in corso..."));
+                    "Scrittura file CSV in corso..."));
             List<CsvRow> rows = context.matching.stream()
                     .sorted(Comparator.comparing(CsvRow::fullPath))
                     .collect(Collectors.toUnmodifiableList());
@@ -214,7 +214,7 @@ public final class ScanEngine implements ScanApplicationService {
                     "Scrittura log di audit in corso..."));
             writeAudit(manifest, OperationStatus.COMPLETED, start, end, context, null, null);
             notifyFinished(new OperationResult(OperationStatus.COMPLETED,
-                    "Scansione completata: " + rows.size() + " file corrispondenti. Manifesto: " + manifest));
+                    "Scansione completata: " + rows.size() + " file corrispondenti. File CSV: " + manifest));
         }
 
         private void cancelled(Instant start, Instant end, ScanContext context) {
@@ -276,7 +276,7 @@ public final class ScanEngine implements ScanApplicationService {
                     // Un'altra scansione ha pubblicato lo stesso nome tra il controllo e lo sposto:
                     // prova il suffisso successivo, temp è ancora disponibile per il retry.
                 } catch (NoSuchFileException gone) {
-                    throw new IOException("Impossibile pubblicare il manifest: file temporaneo non disponibile",
+                    throw new IOException("Impossibile pubblicare il file CSV: file temporaneo non disponibile",
                             gone);
                 }
             }
@@ -319,6 +319,8 @@ public final class ScanEngine implements ScanApplicationService {
             lines.add("Fine: " + LocalDateTime.ofInstant(end, zone).format(TIMESTAMP_FORMAT));
             lines.add("Durata: " + String.format(Locale.ITALIAN, "%.3f s",
                     (end.toEpochMilli() - start.toEpochMilli()) / 1000.0));
+            lines.add("Cartella analizzata: " + command.root());
+            lines.add("Data soglia esclusiva: " + command.thresholdDate().format(DATE_FORMAT));
             lines.add("Elementi visitati: " + context.visited);
             lines.add("File corrispondenti: " + context.matching.size());
             lines.add("Percentuali per formato:");
