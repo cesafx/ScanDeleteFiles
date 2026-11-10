@@ -93,19 +93,26 @@ jobs:
           $env:Path = (($env:Path -split ";") |
             Where-Object { $_ -and $_ -notmatch "(?i)java|jdk|temurin" }) -join ";"
 
-          if (Get-Command java -ErrorAction SilentlyContinue) {
-            throw "Java di sistema ancora visibile durante lo smoke test"
+          $systemJava = Get-Command java -ErrorAction SilentlyContinue
+          if ($systemJava) {
+            Write-Output "::error title=Smoke test non isolato::Java di sistema ancora visibile: $($systemJava.Source)"
+            exit 1
           }
 
           $process = Start-Process -FilePath $env:APP_EXE -PassThru
           Start-Sleep -Seconds 10
           if ($process.HasExited) {
-            throw "Il launcher è terminato prematuramente con codice $($process.ExitCode)"
+            $config = Get-ChildItem (Split-Path $env:APP_EXE) -Filter "ScanDeleteFiles.cfg" -Recurse |
+              Select-Object -First 1
+            $details = if ($config) { (Get-Content $config.FullName) -join "%0A" } else { "config launcher non trovato" }
+            Write-Output "::error title=Launcher terminato prematuramente::Codice $($process.ExitCode)%0A$details"
+            exit 1
           }
           Stop-Process -Id $process.Id -Force
           $env:JAVA_HOME = $savedJavaHome
 
       - name: Pubblica ZIP
+        if: always() && steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: ScanDeleteFiles-Windows-portabile
