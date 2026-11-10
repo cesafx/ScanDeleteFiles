@@ -73,7 +73,9 @@ jobs:
           if (-not $appDirectory) { throw "Directory applicativa assente dallo ZIP" }
 
           $forbidden = Get-ChildItem $extract -File -Recurse | Where-Object {
-            $_.Extension -in ".java", ".csv", ".log" -or $_.Name -eq "preferences.json"
+            $_.Extension -in ".java", ".csv", ".log" -or
+            $_.Name -in "preferences.json", "src.zip", "javac.exe", "javadoc.exe", "jdb.exe", "jlink.exe", "jpackage.exe" -or
+            $_.FullName -match "[\\/](include|man)[\\/]"
           }
           if ($forbidden) {
             throw "Lo ZIP contiene file vietati: $($forbidden.FullName -join ', ')"

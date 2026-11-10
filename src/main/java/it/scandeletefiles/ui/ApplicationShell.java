@@ -48,7 +48,7 @@ public final class ApplicationShell {
         Region spacer = new Region();
         VBox.setVgrow(spacer, Priority.ALWAYS);
 
-        Label safety = new Label("Nessuna operazione sui file è attiva in questa versione.");
+        Label safety = new Label("Le operazioni partono solo dopo una richiesta esplicita.");
         safety.getStyleClass().add("sidebar-note");
         safety.setWrapText(true);
 

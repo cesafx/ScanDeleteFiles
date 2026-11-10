@@ -1,7 +1,6 @@
 package it.scandeletefiles.ui;
 
 import static it.scandeletefiles.ui.ViewSupport.fieldRow;
-
 import static it.scandeletefiles.ui.ViewSupport.screenContent;
 import static it.scandeletefiles.ui.ViewSupport.scrollable;
 import static it.scandeletefiles.ui.ViewSupport.section;
@@ -15,7 +14,7 @@ import it.scandeletefiles.application.OperationStatus;
 import it.scandeletefiles.application.ScanApplicationService;
 import it.scandeletefiles.application.ScanCommand;
 import it.scandeletefiles.navigation.AppScreen;
-import java.io.File;
+import it.scandeletefiles.platform.PathChooserAdapter;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -36,9 +35,6 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
-import javafx.stage.DirectoryChooser;
-import javafx.stage.FileChooser;
-import javafx.stage.Window;
 
 public final class ScanView implements ScreenView {
     private static final List<String> DEFAULT_EXTENSIONS = List.of(
@@ -51,6 +47,7 @@ public final class ScanView implements ScreenView {
 
     private final ScanApplicationService scanService;
     private final ExtensionPreferences extensionsPrefs;
+    private final PathChooserAdapter pathChooser;
     private TextField root;
     private DatePicker threshold;
     private FlowPane extensions;
@@ -61,9 +58,11 @@ public final class ScanView implements ScreenView {
     private CancellableOperation currentOperation;
     private Label status;
 
-    public ScanView(ScanApplicationService scanService, ExtensionPreferences extensionsPrefs) {
+    public ScanView(ScanApplicationService scanService, ExtensionPreferences extensionsPrefs,
+                    PathChooserAdapter pathChooser) {
         this.scanService = Objects.requireNonNull(scanService, "scanService");
         this.extensionsPrefs = Objects.requireNonNull(extensionsPrefs, "extensionsPrefs");
+        this.pathChooser = Objects.requireNonNull(pathChooser, "pathChooser");
     }
 
     @Override
@@ -75,7 +74,7 @@ public final class ScanView implements ScreenView {
         root.setPromptText("Cartella locale, montata o percorso UNC");
         Button chooseRoot = new Button("Scegli cartella");
         chooseRoot.setId("choose-scan-root");
-        chooseRoot.setOnAction(event -> chooseRootFolder(chooseRoot));
+        chooseRoot.setOnAction(event -> chooseRootFolder());
         HBox rootRow = fieldRow(root, chooseRoot);
 
         threshold = new DatePicker();
@@ -99,7 +98,7 @@ public final class ScanView implements ScreenView {
         destination.setPromptText("Posizione e nome del manifest CSV");
         Button chooseDestination = new Button("Scegli destinazione");
         chooseDestination.setId("choose-scan-destination");
-        chooseDestination.setOnAction(event -> chooseManifestDestination(chooseDestination));
+        chooseDestination.setOnAction(event -> chooseManifestDestination());
 
         action = new Button(AppScreen.SCAN.actionLabel());
         action.setDisable(true);
@@ -137,42 +136,14 @@ public final class ScanView implements ScreenView {
         return scrollable(content);
     }
 
-    private void chooseRootFolder(Button source) {
-        DirectoryChooser chooser = new DirectoryChooser();
-        chooser.setTitle("Scegli la cartella da analizzare");
-        initialDirectory(root.getText()).ifPresent(chooser::setInitialDirectory);
-        File selected = chooser.showDialog(ownerOf(source));
-        if (selected != null) {
-            root.setText(selected.toPath().toString());
-        }
+    private void chooseRootFolder() {
+        pathChooser.chooseDirectory(pathOrNull(root.getText()))
+                .ifPresent(selected -> root.setText(selected.toString()));
     }
 
-    private void chooseManifestDestination(Button source) {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Scegli dove salvare il manifest CSV");
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("File CSV (*.csv)", "*.csv"));
-        Path proposed = pathOrNull(destination.getText());
-        if (proposed != null) {
-            Path parent = proposed.getParent();
-            if (parent != null && parent.toFile().isDirectory()) {
-                chooser.setInitialDirectory(parent.toFile());
-            }
-            if (proposed.getFileName() != null) {
-                chooser.setInitialFileName(proposed.getFileName().toString());
-            }
-        }
-        File selected = chooser.showSaveDialog(ownerOf(source));
-        if (selected != null) {
-            String selectedPath = selected.toPath().toString();
-            destination.setText(selectedPath.toLowerCase(Locale.ROOT).endsWith(".csv")
-                    ? selectedPath : selectedPath + ".csv");
-        }
-    }
-
-    private static java.util.Optional<File> initialDirectory(String value) {
-        Path path = pathOrNull(value);
-        return path != null && path.toFile().isDirectory()
-                ? java.util.Optional.of(path.toFile()) : java.util.Optional.empty();
+    private void chooseManifestDestination() {
+        pathChooser.chooseCsvDestination(pathOrNull(destination.getText()))
+                .ifPresent(selected -> destination.setText(selected.toString()));
     }
 
     private static Path pathOrNull(String value) {
@@ -186,9 +157,6 @@ public final class ScanView implements ScreenView {
         }
     }
 
-    private static Window ownerOf(Button source) {
-        return source.getScene() == null ? null : source.getScene().getWindow();
-    }
 
     private void validate() {
         boolean ready = !root.getText().isBlank()

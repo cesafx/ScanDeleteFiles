@@ -2,6 +2,7 @@ package it.scandeletefiles.bootstrap;
 
 import it.scandeletefiles.application.ExtensionPreferences;
 import it.scandeletefiles.navigation.NavigationModel;
+import it.scandeletefiles.platform.JavaFxPathChooserAdapter;
 import it.scandeletefiles.ui.ApplicationShell;
 import it.scandeletefiles.ui.DeletionView;
 import it.scandeletefiles.ui.ScanView;
@@ -29,7 +30,8 @@ public record ApplicationCompositionRoot(
 
     public Parent createView() {
         ExtensionPreferences extensions = new ExtensionPreferences(platform.settings());
-        return new ApplicationShell(navigation, new ScanView(services.scan(), extensions),
+        return new ApplicationShell(navigation,
+                new ScanView(services.scan(), extensions, new JavaFxPathChooserAdapter()),
                 new DeletionView(services.deletion())).createView();
     }
 }

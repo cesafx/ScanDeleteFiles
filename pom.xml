@@ -126,8 +126,6 @@
                                         <argument>it.scandeletefiles.ScanDeleteFilesLauncher</argument>
                                         <argument>--dest</argument>
                                         <argument>${project.build.directory}/package</argument>
-                                        <argument>--runtime-image</argument>
-                                        <argument>${java.home}</argument>
                                     </arguments>
                                 </configuration>
                             </execution>
