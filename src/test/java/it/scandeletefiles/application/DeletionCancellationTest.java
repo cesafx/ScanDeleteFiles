@@ -34,7 +34,7 @@ class DeletionCancellationTest {
         Path first = file(root, "primo.txt");
         Path second = file(root, "secondo.txt");
         Path third = file(root, "terzo.txt");
-        Path manifest = root.resolve("annullamento.csv");
+        Path manifest = root.resolve("scansione_20261110_100002.csv");
         Files.writeString(manifest, csv(root, first, second, third), StandardCharsets.UTF_8);
 
         BlockingTrash trash = new BlockingTrash(trashDir);
@@ -66,13 +66,13 @@ class DeletionCancellationTest {
         assertTrue(Files.exists(second));
         assertTrue(Files.exists(third));
 
-        List<String> report = Files.readString(root.resolve("annullamento.report.csv"), StandardCharsets.UTF_8)
+        List<String> report = Files.readString(root.resolve("trash_20261110_100002.csv"), StandardCharsets.UTF_8)
                 .substring(1).lines().toList();
         assertEquals("Cestinato", report.get(1).split(";", -1)[6]);
         assertEquals("Non elaborato", report.get(2).split(";", -1)[6]);
         assertEquals("Non elaborato", report.get(3).split(";", -1)[6]);
 
-        String audit = Files.readString(root.resolve("annullamento.csv.log"), StandardCharsets.UTF_8);
+        String audit = Files.readString(root.resolve("trash_20261110_100002.log"), StandardCharsets.UTF_8);
         assertTrue(audit.contains("Stato: ANNULLATA"));
         assertTrue(audit.contains("Righe elaborate: 1"));
         assertTrue(audit.contains("File cestinati: 1"));

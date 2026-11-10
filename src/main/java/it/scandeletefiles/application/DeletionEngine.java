@@ -21,10 +21,12 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -64,6 +66,8 @@ public final class DeletionEngine implements DeletionApplicationService {
     private static final String ESITO_SALTATO = "Saltato";
     private static final String ESITO_ERRORE = "Errore";
     private static final String ESITO_NON_ELABORATO = "Non elaborato";
+    private static final Object OUTPUT_RESERVATION_LOCK = new Object();
+    private static final Set<Path> RESERVED_OUTPUTS = new HashSet<>();
 
     private final TrashAdapter trash;
     private final Clock clock;
@@ -167,6 +171,7 @@ public final class DeletionEngine implements DeletionApplicationService {
         private final DeletionCommand command;
         private final OperationObserver observer;
         private final AtomicBoolean cancelled = new AtomicBoolean();
+        private OutputPaths outputPaths;
 
         private DeletionTask(DeletionCommand command, OperationObserver observer) {
             this.command = command;
@@ -178,6 +183,7 @@ public final class DeletionEngine implements DeletionApplicationService {
             Instant start = clock.instant();
             DeletionContext context = new DeletionContext();
             try {
+                outputPaths = resolveOutputPaths(command.manifest(), command.mode());
                 notifyProgress(OperationProgress.indeterminate(0, "Avvio cancellazione"));
                 context.rows.addAll(readManifest(command.manifest()));
                 context.controllate = context.rows.size();
@@ -211,6 +217,8 @@ public final class DeletionEngine implements DeletionApplicationService {
                 notifyFinished(new OperationResult(status, messaggioFinale(status, context)));
             } catch (Exception exc) {
                 failed(start, context, exc);
+            } finally {
+                releaseOutputPaths(outputPaths);
             }
         }
 
@@ -386,7 +394,7 @@ public final class DeletionEngine implements DeletionApplicationService {
 
         private void writeReport(Path manifest, List<CsvRow> rows, List<RowOutcome> outcomes)
                 throws IOException {
-            Path report = reportPath(manifest);
+            Path report = outputPaths.report();
             Path parent = report.getParent() == null ? Path.of(".") : report.getParent();
             Path temp = parent.resolve(report.getFileName().toString() + ".tmp." + System.nanoTime());
             try (BufferedWriter writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8)) {
@@ -424,7 +432,7 @@ public final class DeletionEngine implements DeletionApplicationService {
         private void writeAudit(Path manifest, OperationStatus status, Instant start, Instant end,
                                 DeletionContext context, String note) throws IOException {
             ZoneId zone = clock.getZone();
-            Path audit = manifest.resolveSibling(manifest.getFileName().toString() + ".log");
+            Path audit = outputPaths.audit();
             List<String> lines = new ArrayList<>();
             lines.add("ScanDeleteFiles — Audit di cancellazione");
             lines.add("");
@@ -488,19 +496,55 @@ public final class DeletionEngine implements DeletionApplicationService {
                             + "; errori: " + context.errori);
         }
 
-        private static Path reportPath(Path manifest) {
+        private static OutputPaths resolveOutputPaths(Path manifest, DeletionMode mode) {
             String name = manifest.getFileName().toString();
             Path parent = manifest.getParent() == null ? Path.of(".") : manifest.getParent();
             String base = name.toLowerCase(Locale.ROOT).endsWith(".csv")
                     ? name.substring(0, name.length() - 4)
                     : name;
+            String suffix;
             if (base.equalsIgnoreCase("scansione")) {
-                return parent.resolve("cancellazione.csv");
+                suffix = "";
+            } else if (base.regionMatches(true, 0, "scansione_", 0, "scansione_".length())) {
+                suffix = base.substring("scansione_".length());
+            } else {
+                suffix = base;
             }
-            if (base.regionMatches(true, 0, "scansione_", 0, "scansione_".length())) {
-                return parent.resolve("cancellazione_" + base.substring("scansione_".length()) + ".csv");
+            String stem = actionPrefix(mode) + (suffix.isBlank() ? "" : "_" + suffix);
+            synchronized (OUTPUT_RESERVATION_LOCK) {
+                for (int sequence = 1; ; sequence++) {
+                    String candidateStem = sequence == 1 ? stem : stem + "_" + sequence;
+                    Path report = parent.resolve(candidateStem + ".csv").toAbsolutePath().normalize();
+                    Path audit = parent.resolve(candidateStem + ".log").toAbsolutePath().normalize();
+                    if (!Files.exists(report) && !Files.exists(audit)
+                            && !RESERVED_OUTPUTS.contains(report) && !RESERVED_OUTPUTS.contains(audit)) {
+                        RESERVED_OUTPUTS.add(report);
+                        RESERVED_OUTPUTS.add(audit);
+                        return new OutputPaths(report, audit);
+                    }
+                }
             }
-            return parent.resolve(base + ".report.csv");
+        }
+
+        private static void releaseOutputPaths(OutputPaths paths) {
+            if (paths == null) {
+                return;
+            }
+            synchronized (OUTPUT_RESERVATION_LOCK) {
+                RESERVED_OUTPUTS.remove(paths.report());
+                RESERVED_OUTPUTS.remove(paths.audit());
+            }
+        }
+
+        private static String actionPrefix(DeletionMode mode) {
+            return switch (mode) {
+                case TRASH -> "trash";
+                case PERMANENT -> "deleting";
+                case MOVE_TO_FOLDER -> "moving";
+            };
+        }
+
+        private record OutputPaths(Path report, Path audit) {
         }
 
         private static void moveAtomically(Path temp, Path target) throws IOException {

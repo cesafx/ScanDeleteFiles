@@ -141,7 +141,7 @@ class DeletionCsvValidationTest {
         OperationResult result = esegui(engine, manifest);
         assertEquals(OperationStatus.FAILED, result.status());
         fileIntattoENonCestinato(file, trash);
-        assertFalse(Files.exists(root.resolve("senza-bom.report.csv")),
+        assertFalse(Files.exists(root.resolve("trash_senza-bom.csv")),
                 "nessun report deve essere prodotto per un manifest non conforme");
     }
 
@@ -187,7 +187,7 @@ class DeletionCsvValidationTest {
         assertEquals(OperationStatus.COMPLETED, result.status());
         fileIntattoENonCestinato(file, trash);
 
-        Path report = root.resolve("malformata.report.csv");
+        Path report = root.resolve("trash_malformata.csv");
         List<String> lines = Files.readString(report, StandardCharsets.UTF_8).substring(1).lines().toList();
         assertEquals(2, lines.size());
         String[] parts = lines.get(1).split(";", -1);
@@ -216,7 +216,7 @@ class DeletionCsvValidationTest {
         assertEquals(OperationStatus.COMPLETED, result.status());
         fileIntattoENonCestinato(file, trash);
 
-        Path report = root.resolve("valore-sconosciuto.report.csv");
+        Path report = root.resolve("trash_valore-sconosciuto.csv");
         List<String> lines = Files.readString(report, StandardCharsets.UTF_8).substring(1).lines().toList();
         String[] parts = lines.get(1).split(";", -1);
         assertEquals("Errore", parts[6]);
@@ -244,7 +244,7 @@ class DeletionCsvValidationTest {
         assertEquals(OperationStatus.COMPLETED, result.status());
         fileIntattoENonCestinato(file, trash);
 
-        Path report = root.resolve("incoerente-nome.report.csv");
+        Path report = root.resolve("trash_incoerente-nome.csv");
         List<String> lines = Files.readString(report, StandardCharsets.UTF_8).substring(1).lines().toList();
         assertEquals("Errore", lines.get(1).split(";", -1)[6]);
     }
@@ -269,7 +269,7 @@ class DeletionCsvValidationTest {
         assertEquals(OperationStatus.COMPLETED, result.status());
         fileIntattoENonCestinato(file, trash);
 
-        Path report = root.resolve("incoerente-formato.report.csv");
+        Path report = root.resolve("trash_incoerente-formato.csv");
         assertEquals("Errore",
                 Files.readString(report, StandardCharsets.UTF_8).substring(1).lines().toList().get(1)
                         .split(";", -1)[6]);
@@ -305,7 +305,7 @@ class DeletionCsvValidationTest {
         assertTrue(Files.exists(c), "Delete vuoto conserva il file");
         assertEquals(1, trash.moved.size(), "una sola riga Yes deve essere cestinata");
 
-        Path report = root.resolve("valide.report.csv");
+        Path report = root.resolve("trash_valide.csv");
         List<String> lines = Files.readString(report, StandardCharsets.UTF_8).substring(1).lines().toList();
         assertEquals(4, lines.size());
         assertEquals("Cestinato", lines.get(1).split(";", -1)[6]);

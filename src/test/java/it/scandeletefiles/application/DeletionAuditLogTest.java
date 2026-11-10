@@ -155,7 +155,7 @@ class DeletionAuditLogTest {
         assertFalse(Files.exists(c));
         assertTrue(Files.exists(d));
 
-        Path report = root.resolve("operazione.report.csv");
+        Path report = root.resolve("trash_operazione.csv");
         assertTrue(Files.exists(report));
         String content = Files.readString(report, StandardCharsets.UTF_8);
         assertTrue(content.startsWith("\uFEFF"));
@@ -164,7 +164,7 @@ class DeletionAuditLogTest {
                 lines.get(0));
         assertEquals(5, lines.size());
 
-        Path audit = root.resolve("operazione.csv.log");
+        Path audit = root.resolve("trash_operazione.log");
         assertTrue(Files.exists(audit));
         String log = Files.readString(audit, StandardCharsets.UTF_8);
         assertTrue(log.contains("Stato: COMPLETATA"));
@@ -225,7 +225,7 @@ class DeletionAuditLogTest {
         assertTrue(Files.exists(esistente));
         assertTrue(Files.exists(modificato));
 
-        Path report = root.resolve("rischi.report.csv");
+        Path report = root.resolve("trash_rischi.csv");
         List<String> lines = Files.readString(report, StandardCharsets.UTF_8).substring(1).lines().toList();
         assertEquals(5, lines.size());
         Map<String, String[]> byName = new java.util.HashMap<>();
@@ -241,7 +241,7 @@ class DeletionAuditLogTest {
         assertEquals("Errore", byName.get("esistente.txt")[6]);
         assertTrue(byName.get("esistente.txt")[7].contains("non ammesso"));
 
-        Path audit = root.resolve("rischi.csv.log");
+        Path audit = root.resolve("trash_rischi.log");
         String log = Files.readString(audit, StandardCharsets.UTF_8);
         assertTrue(log.contains("Righe controllate: 4"));
         assertTrue(log.contains("Righe Da eliminare: 3"));
@@ -298,13 +298,13 @@ class DeletionAuditLogTest {
         assertEquals(OperationStatus.COMPLETED, result.get().status());
         assertTrue(Files.exists(file), "il file deve rimanere intatto quando il cestino non è disponibile");
 
-        Path report = root.resolve("bloccato.report.csv");
+        Path report = root.resolve("trash_bloccato.csv");
         List<String> lines = Files.readString(report, StandardCharsets.UTF_8).substring(1).lines().toList();
         assertEquals(2, lines.size());
         assertEquals("Saltato", lines.get(1).split(";", -1)[6]);
         assertTrue(lines.get(1).contains("cestino non disponibile"));
 
-        Path audit = root.resolve("bloccato.csv.log");
+        Path audit = root.resolve("trash_bloccato.log");
         String log = Files.readString(audit, StandardCharsets.UTF_8);
         assertTrue(log.contains("Righe saltate: 1"));
         assertTrue(log.contains("Errori: 0"));
@@ -315,7 +315,7 @@ class DeletionAuditLogTest {
     void csvRifiutatoProduceComunqueAuditFallita(@TempDir Path root) throws Exception {
         Path trashDir = Files.createDirectory(root.resolve("cestino"));
         ControlledTrash trash = new ControlledTrash(trashDir);
-        Path manifest = root.resolve("rifiutato.csv");
+        Path manifest = root.resolve("scansione_20261110_100001.csv");
         Files.writeString(manifest,
                 "Nome file;Path cartella;Path completo;Formato file;Data ultima modifica;Delete\n",
                 StandardCharsets.UTF_8);
@@ -323,7 +323,7 @@ class DeletionAuditLogTest {
         OperationResult result = execute(new DeletionEngine(trash, Clock.fixed(FIXED, ZoneOffset.UTC)), manifest);
 
         assertEquals(OperationStatus.FAILED, result.status());
-        String audit = Files.readString(root.resolve("rifiutato.csv.log"), StandardCharsets.UTF_8);
+        String audit = Files.readString(root.resolve("trash_20261110_100001.log"), StandardCharsets.UTF_8);
         assertTrue(audit.contains("Stato: FALLITA"));
         assertTrue(audit.contains("BOM UTF-8"));
     }
@@ -365,7 +365,7 @@ class DeletionAuditLogTest {
         assertTrue(Files.exists(fatale), "la riga del guasto fatale non deve risultare cancellata");
         assertTrue(Files.exists(nonElaborato), "le righe successive al guasto non devono essere avviate");
 
-        List<String> report = Files.readString(root.resolve("fatale.report.csv"), StandardCharsets.UTF_8)
+        List<String> report = Files.readString(root.resolve("trash_fatale.csv"), StandardCharsets.UTF_8)
                 .substring(1).lines().toList();
         assertEquals(4, report.size());
         assertEquals("Cestinato", report.get(1).split(";", -1)[6]);
@@ -373,7 +373,7 @@ class DeletionAuditLogTest {
         assertTrue(report.get(2).split(";", -1)[7].contains("guasto fatale controllato"));
         assertEquals("Non elaborato", report.get(3).split(";", -1)[6]);
 
-        String audit = Files.readString(root.resolve("fatale.csv.log"), StandardCharsets.UTF_8);
+        String audit = Files.readString(root.resolve("trash_fatale.log"), StandardCharsets.UTF_8);
         assertTrue(audit.contains("Stato: FALLITA"));
         assertTrue(audit.contains("Righe controllate: 3"));
         assertTrue(audit.contains("Righe elaborate: 2"));

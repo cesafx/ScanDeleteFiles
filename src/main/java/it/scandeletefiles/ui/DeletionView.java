@@ -30,6 +30,7 @@ import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
 
@@ -152,16 +153,20 @@ public final class DeletionView implements ScreenView {
     }
 
     private void chooseDestination() {
-        Path proposed = Path.of(destination.getText().trim());
+        String currentValue = destination.getText().trim();
+        Path proposed = currentValue.isEmpty() ? null : Path.of(currentValue).normalize();
         if (pathChooser != null) {
-            pathChooser.chooseCsvDestination(proposed.normalize())
+            pathChooser.chooseDirectory(proposed)
                     .ifPresent(selected -> destination.setText(selected.toString()));
             return;
         }
-        FileChooser chooser = new FileChooser();
+        DirectoryChooser chooser = new DirectoryChooser();
         chooser.setTitle("Scegli la cartella di destinazione");
+        if (proposed != null && proposed.toFile().isDirectory()) {
+            chooser.setInitialDirectory(proposed.toFile());
+        }
         Window owner = chooseDestination.getScene() == null ? null : chooseDestination.getScene().getWindow();
-        File selected = chooser.showOpenDialog(owner);
+        File selected = chooser.showDialog(owner);
         if (selected != null) {
             destination.setText(selected.toPath().toString());
         }

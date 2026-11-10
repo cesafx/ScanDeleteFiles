@@ -111,7 +111,7 @@ class MoveToFolderDeletionTest {
         assertTrue(Files.exists(b), "il file No deve essere conservato");
         assertTrue(Files.exists(c), "il file con Delete vuoto deve essere conservato");
 
-        Path report = root.resolve("manifest.report.csv");
+        Path report = root.resolve("moving_manifest.csv");
         assertTrue(Files.exists(report), "il report deve essere scritto accanto al manifest");
         String content = Files.readString(report, StandardCharsets.UTF_8);
         List<String> lines = content.substring(1).lines().toList();
@@ -129,7 +129,7 @@ class MoveToFolderDeletionTest {
         assertEquals("Saltato", byName.get("c.txt")[6]);
         assertEquals("Spostato", byName.get("d.txt")[6]);
 
-        Path audit = root.resolve("manifest.csv.log");
+        Path audit = root.resolve("moving_manifest.log");
         assertTrue(Files.exists(audit), "il log di audit deve essere scritto accanto al manifest");
         String log = Files.readString(audit, StandardCharsets.UTF_8);
         assertTrue(log.contains("Stato: COMPLETATA"));
@@ -186,7 +186,7 @@ class MoveToFolderDeletionTest {
         assertTrue(Files.exists(destination.resolve("duplicato_2.txt")),
                 "il file spostato deve assumere il nome duplicato_2.txt");
 
-        Path report = root.resolve("manifest.report.csv");
+        Path report = root.resolve("moving_manifest.csv");
         String content = Files.readString(report, StandardCharsets.UTF_8);
         List<String> lines = content.substring(1).lines().toList();
         String[] parts = lines.get(1).split(";", -1);

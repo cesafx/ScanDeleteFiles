@@ -1,6 +1,7 @@
 package it.scandeletefiles.ui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import it.scandeletefiles.application.CancellableOperation;
@@ -12,6 +13,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javafx.application.Platform;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -81,6 +83,44 @@ class ScanPathChooserUiTest {
             assertEquals(root.toString(), rootField.getText());
             chooseDestination.fire();
             assertEquals(destination.toString(), destinationField.getText());
+            return null;
+        });
+    }
+
+    @Test
+    void destinazioneSpostamentoUsaSelettoreDiCartella(@TempDir Path root) throws Exception {
+        Path destination = root.resolve("destinazione");
+        AtomicBoolean csvChooserInvoked = new AtomicBoolean();
+        PathChooserAdapter chooser = new PathChooserAdapter() {
+            @Override
+            public Optional<Path> chooseDirectory(Path initialDirectory) {
+                return Optional.of(destination);
+            }
+
+            @Override
+            public Optional<Path> chooseCsvDestination(Path proposedDestination) {
+                csvChooserInvoked.set(true);
+                return Optional.empty();
+            }
+        };
+
+        runOnFxThread(() -> {
+            DeletionView view = new DeletionView((command, observer) -> NO_OP,
+                    warning -> it.scandeletefiles.application.PermanentDeletionConfirmation.Result.REJECTED,
+                    chooser);
+            Parent parent = view.createView();
+            Scene scene = new Scene(parent);
+            parent.applyCss();
+            parent.layout();
+
+            Button chooseDestination = (Button) scene.lookup("#choose-move-destination");
+            TextField destinationField = (TextField) scene.lookup("#move-destination");
+            assertNotNull(chooseDestination);
+            assertNotNull(destinationField);
+
+            chooseDestination.fire();
+            assertEquals(destination.toString(), destinationField.getText());
+            assertFalse(csvChooserInvoked.get());
             return null;
         });
     }

@@ -35,10 +35,10 @@ class UnsupportedTrashTest {
 
         assertEquals(OperationStatus.COMPLETED, result.status());
         assertTrue(Files.exists(file), "il file deve restare intatto");
-        String[] reportRow = reportRow(root.resolve("non-disponibile.report.csv"));
+        String[] reportRow = reportRow(root.resolve("trash_non-disponibile.csv"));
         assertEquals("Saltato", reportRow[6]);
         assertTrue(reportRow[7].contains("cestino non disponibile"));
-        String audit = Files.readString(root.resolve("non-disponibile.csv.log"));
+        String audit = Files.readString(root.resolve("trash_non-disponibile.log"));
         assertTrue(audit.contains("Righe saltate: 1"));
         assertTrue(audit.contains("Errori: 0"));
     }
@@ -53,7 +53,7 @@ class UnsupportedTrashTest {
 
         assertEquals(OperationStatus.COMPLETED, result.status());
         assertTrue(Files.exists(file), "un errore del cestino non deve eliminare il file");
-        String[] reportRow = reportRow(root.resolve("errore.report.csv"));
+        String[] reportRow = reportRow(root.resolve("trash_errore.csv"));
         assertEquals("Errore", reportRow[6]);
         assertTrue(reportRow[7].contains("accesso negato"));
     }

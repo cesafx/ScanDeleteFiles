@@ -152,6 +152,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 103. Come utente, voglio che un file già presente nella cartella di destinazione non venga sovrascritto: verrà aggiunto un suffisso numerico al nome per preservare entrambi i file.
 104. Come utente, voglio che il log di scansione riporti le esclusioni per formato, con conteggio e percentuale sul totale visitato dei file scartati perché non inclusi nei filtri selezionati, così da capire se occorre aggiungere la gestione di un nuovo tipo documento.
 105. Come utente, voglio che durante la scansione di grandi quantità di documenti l'interfaccia indichi in modo continuo se l'operazione è attiva (esaminando file, scrivendo il manifesto, scrivendo il log di audit), così da sapere che l'applicazione non si è bloccata.
+106. Come utente, voglio che il report CSV e il log prodotti dall'elaborazione del manifest siano denominati in base all'azione effettuata (`trash`, `deleting` o `moving`), così da riconoscere immediatamente il tipo di operazione.
 
 ## Implementation Decisions
 
@@ -270,7 +271,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 ### Report di cancellazione
 
 - Il report sarà salvato accanto al CSV di input.
-- Per un manifest `scansione_<timestamp>.csv`, il report sarà chiamato `cancellazione_<timestamp>.csv`, così da distinguere chiaramente input e risultato.
+- Per un manifest `scansione_<timestamp>.csv`, report e log useranno lo stesso timestamp e il prefisso dell'azione: `trash_<timestamp>.csv/.log` per il cestino, `deleting_<timestamp>.csv/.log` per la cancellazione permanente e `moving_<timestamp>.csv/.log` per lo spostamento in cartella.
 - Conterrà le sei colonne originali, nello stesso ordine, seguite da:
   7. `Esito`
   8. `Dettaglio`
@@ -308,7 +309,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
   - numero di errori;
   - percentuali per formato tra le righe conteggiate come `Delete=Yes`.
 - Le percentuali saranno calcolate usando come denominatore il totale dichiarato per ciascuna operazione: file corrispondenti per la scansione e righe `Delete=Yes` per la cancellazione.
-- Il formato testuale preciso dei log, i nomi esatti dei file di report e audit e la rappresentazione delle percentuali quando il denominatore è zero non sono definiti dal contesto e dovranno essere stabiliti senza modificare i dati obbligatori.
+- Il formato testuale preciso dei log e la rappresentazione delle percentuali quando il denominatore è zero non sono prescritti, purché i dati obbligatori e i nomi action-specific dei file siano rispettati.
 
 ## Testing Decisions
 
@@ -405,5 +406,5 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 - La compatibilità Linux riguarda il nucleo applicativo; il pacchetto portabile richiesto da questa specifica è quello Windows.
 - La semantica precisa del conteggio “elementi visitati” dovrà essere resa stabile e documentata prima dell’implementazione dei relativi test, senza omettere il dato dal log.
 - Il comportamento per righe CSV strutturalmente illeggibili e la rappresentazione nel report dovranno preservare, per quanto tecnicamente possibile, il requisito di tracciamento di una riga per ogni riga di input senza autorizzare alcuna cancellazione.
-- I nomi esatti dei file di manifest proposti, report e log, oltre alla gestione di eventuali collisioni con file esistenti, non sono definiti nel contesto.
+- I report e i log di elaborazione usano i prefissi action-specific definiti sopra; in caso di collisione viene aggiunto un suffisso numerico `_2`, `_3`, ecc. alla coppia CSV/log senza sovrascrivere file esistenti.
 - Il meccanismo concreto di persistenza della checklist non è prescritto; il contratto richiesto è che la selezione sopravviva alla chiusura e al successivo avvio dell’applicazione.

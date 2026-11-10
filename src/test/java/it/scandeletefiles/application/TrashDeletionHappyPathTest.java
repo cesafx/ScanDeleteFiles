@@ -141,7 +141,7 @@ class TrashDeletionHappyPathTest {
         assertTrue(Files.exists(c), "il file con Delete vuoto deve essere conservato");
 
         // Report accanto all'input: sei colonne originali + Esito e Dettaglio
-        Path report = root.resolve("manifest.report.csv");
+        Path report = root.resolve("trash_manifest.csv");
         assertTrue(Files.exists(report), "il report deve essere scritto accanto al manifest");
         String content = Files.readString(report, StandardCharsets.UTF_8);
         assertTrue(content.startsWith("\uFEFF"), "il report deve iniziare con il BOM UTF-8");
@@ -162,7 +162,7 @@ class TrashDeletionHappyPathTest {
         byName.values().forEach(parts -> assertEquals(8, parts.length, "ogni riga deve avere 6 colonne + Esito + Dettaglio"));
 
         // Audit accanto al CSV di input
-        Path audit = root.resolve("manifest.csv.log");
+        Path audit = root.resolve("trash_manifest.log");
         assertTrue(Files.exists(audit), "il log di audit deve essere scritto accanto al manifest");
         String log = Files.readString(audit, StandardCharsets.UTF_8);
         assertTrue(log.contains("Stato: COMPLETATA"), "l'audit deve dichiarare lo stato finale");
@@ -220,14 +220,14 @@ class TrashDeletionHappyPathTest {
         assertTrue(Files.exists(file), "la riga incoerente non deve cancellare il file");
         assertTrue(trash.moved.isEmpty(), "nessun file deve essere spostato nel cestino");
 
-        Path report = root.resolve("manifest.report.csv");
+        Path report = root.resolve("trash_manifest.csv");
         String content = Files.readString(report, StandardCharsets.UTF_8);
         List<String> lines = content.substring(1).lines().toList();
         assertEquals(2, lines.size(), "header del report più una sola riga di esito");
         String[] parts = lines.get(1).split(";", -1);
         assertEquals("Errore", parts[6], "la riga incoerente deve avere Esito = Errore");
 
-        Path audit = root.resolve("manifest.csv.log");
+        Path audit = root.resolve("trash_manifest.log");
         String log = Files.readString(audit, StandardCharsets.UTF_8);
         assertTrue(log.contains("Righe Da eliminare: 1"), "l'audit conta la riga Yes tra le da eliminare");
         assertTrue(log.contains("Errori: 1"), "l'audit conta la riga incoerente come errore");

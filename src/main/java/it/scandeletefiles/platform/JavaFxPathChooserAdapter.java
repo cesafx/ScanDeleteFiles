@@ -12,7 +12,7 @@ public final class JavaFxPathChooserAdapter implements PathChooserAdapter {
     @Override
     public Optional<Path> chooseDirectory(Path initialDirectory) {
         DirectoryChooser chooser = new DirectoryChooser();
-        chooser.setTitle("Scegli la cartella da analizzare");
+        chooser.setTitle("Scegli cartella");
         if (initialDirectory != null && initialDirectory.toFile().isDirectory()) {
             chooser.setInitialDirectory(initialDirectory.toFile());
         }

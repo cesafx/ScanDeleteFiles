@@ -138,7 +138,7 @@ class DeletionRecheckTest {
         assertFalse(Files.exists(mancante), "il file non esisteva nemmeno prima");
         assertTrue(trash.moved.isEmpty(), "nessun file è stato spostato nel cestino");
 
-        List<String> lines = Files.readString(root.resolve("mancante.report.csv"),
+        List<String> lines = Files.readString(root.resolve("trash_mancante.csv"),
                 StandardCharsets.UTF_8).substring(1).lines().toList();
         assertEquals("Errore", lines.get(1).split(";", -1)[6]);
         assertTrue(lines.get(1).contains("non trovato"), "il dettaglio deve segnalare il file mancante");
@@ -166,7 +166,7 @@ class DeletionRecheckTest {
         assertTrue(Files.exists(file), "la data non corrispondente conserva il file");
         assertTrue(trash.moved.isEmpty(), "nessun file spostato nel cestino");
 
-        List<String> lines = Files.readString(root.resolve("data-diversa.report.csv"),
+        List<String> lines = Files.readString(root.resolve("trash_data-diversa.csv"),
                 StandardCharsets.UTF_8).substring(1).lines().toList();
         assertEquals("Saltato", lines.get(1).split(";", -1)[6]);
         assertTrue(lines.get(1).contains("non corrispondente"));
@@ -198,7 +198,7 @@ class DeletionRecheckTest {
         assertFalse(Files.exists(file), "stesso giorno: il file viene comunque cestinato");
         assertEquals(1, trash.moved.size());
 
-        List<String> lines = Files.readString(root.resolve("stesso-giorno.report.csv"),
+        List<String> lines = Files.readString(root.resolve("trash_stesso-giorno.csv"),
                 StandardCharsets.UTF_8).substring(1).lines().toList();
         assertEquals("Cestinato", lines.get(1).split(";", -1)[6]);
     }
@@ -225,7 +225,7 @@ class DeletionRecheckTest {
         assertTrue(Files.exists(file), "data non valida: il file resta conservato");
         assertTrue(trash.moved.isEmpty());
 
-        List<String> lines = Files.readString(root.resolve("data-non-valida.report.csv"),
+        List<String> lines = Files.readString(root.resolve("trash_data-non-valida.csv"),
                 StandardCharsets.UTF_8).substring(1).lines().toList();
         assertEquals("Errore", lines.get(1).split(";", -1)[6]);
         assertTrue(lines.get(1).contains("non valida"));

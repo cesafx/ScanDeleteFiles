@@ -99,9 +99,13 @@ class DeletionReportTest {
     }
 
     private static OperationResult esegui(DeletionEngine engine, Path manifest) throws Exception {
+        return esegui(engine, new DeletionCommand(manifest, DeletionMode.TRASH, false));
+    }
+
+    private static OperationResult esegui(DeletionEngine engine, DeletionCommand command) throws Exception {
         CountDownLatch finished = new CountDownLatch(1);
         AtomicReference<OperationResult> result = new AtomicReference<>();
-        engine.start(new DeletionCommand(manifest, DeletionMode.TRASH, false), new OperationObserver() {
+        engine.start(command, new OperationObserver() {
             @Override
             public void onProgress(OperationProgress p) {
             }
@@ -143,7 +147,7 @@ class DeletionReportTest {
         OperationResult result = esegui(engine, manifest);
         assertEquals(OperationStatus.COMPLETED, result.status());
 
-        Path report = root.resolve("operazione.report.csv");
+        Path report = root.resolve("trash_operazione.csv");
         assertTrue(Files.exists(report), "il report deve essere prodotto accanto al manifest");
         String content = Files.readString(report, StandardCharsets.UTF_8);
         assertTrue(content.startsWith("\uFEFF"), "il report deve iniziare con il BOM UTF-8");
@@ -188,7 +192,7 @@ class DeletionReportTest {
         assertTrue(Files.exists(c));
         assertEquals(1, trash.moved.size());
 
-        Path audit = root.resolve("operazione.csv.log");
+        Path audit = root.resolve("trash_operazione.log");
         assertTrue(Files.exists(audit), "l'audit deve essere scritto accanto al manifest CSV");
         String log = Files.readString(audit, StandardCharsets.UTF_8);
         assertTrue(log.contains("Stato: COMPLETATA"));
@@ -200,7 +204,7 @@ class DeletionReportTest {
     }
 
     @Test
-    void reportDiScansioneUsaNomeCancellazione(@TempDir Path root) throws Exception {
+    void cestinoUsaNomiTrashPerReportELog(@TempDir Path root) throws Exception {
         Path trashDir = Files.createDirectories(root.resolve("cestino"));
         Path file = root.resolve("a.txt");
         writeFile(root, "a.txt", MTIME);
@@ -210,9 +214,130 @@ class DeletionReportTest {
                 row("a.txt", root.toString(), file, "TXT", "2026/11/09", "Yes")),
                 StandardCharsets.UTF_8);
 
-        esegui(engine(root, trash), manifest);
+        OperationResult result = esegui(engine(root, trash), manifest);
 
-        assertTrue(Files.exists(root.resolve("cancellazione_20261110_100000.csv")));
+        assertEquals(OperationStatus.COMPLETED, result.status());
+        assertFalse(Files.exists(file));
+        assertTrue(Files.exists(root.resolve("trash_20261110_100000.csv")));
+        assertTrue(Files.exists(root.resolve("trash_20261110_100000.log")));
         assertFalse(Files.exists(root.resolve("scansione_20261110_100000.report.csv")));
+        assertFalse(Files.exists(root.resolve("scansione_20261110_100000.csv.log")));
+    }
+
+    @Test
+    void cancellazionePermanenteUsaNomiDeletingPerReportELog(@TempDir Path root) throws Exception {
+        Path trashDir = Files.createDirectories(root.resolve("cestino"));
+        Path file = root.resolve("a.txt");
+        writeFile(root, "a.txt", MTIME);
+        ControlledTrash trash = new ControlledTrash(trashDir);
+        Path manifest = root.resolve("scansione_20261110_100000.csv");
+        Files.writeString(manifest, manifestCsv(root.toString(),
+                row("a.txt", root.toString(), file, "TXT", "2026/11/09", "Yes")),
+                StandardCharsets.UTF_8);
+
+        OperationResult result = esegui(engine(root, trash),
+                new DeletionCommand(manifest, DeletionMode.PERMANENT, true));
+
+        assertEquals(OperationStatus.COMPLETED, result.status());
+        assertFalse(Files.exists(file));
+        assertTrue(Files.exists(root.resolve("deleting_20261110_100000.csv")));
+        assertTrue(Files.exists(root.resolve("deleting_20261110_100000.log")));
+        assertFalse(Files.exists(root.resolve("scansione_20261110_100000.csv.log")));
+    }
+
+    @Test
+    void spostamentoUsaNomiMovingPerReportELog(@TempDir Path root) throws Exception {
+        Path trashDir = Files.createDirectories(root.resolve("cestino"));
+        Path destination = Files.createDirectories(root.resolve("destinazione"));
+        Path file = root.resolve("a.txt");
+        writeFile(root, "a.txt", MTIME);
+        ControlledTrash trash = new ControlledTrash(trashDir);
+        Path manifest = root.resolve("scansione_20261110_100000.csv");
+        Files.writeString(manifest, manifestCsv(root.toString(),
+                row("a.txt", root.toString(), file, "TXT", "2026/11/09", "Yes")),
+                StandardCharsets.UTF_8);
+
+        OperationResult result = esegui(engine(root, trash),
+                new DeletionCommand(manifest, DeletionMode.MOVE_TO_FOLDER, false, destination));
+
+        assertEquals(OperationStatus.COMPLETED, result.status());
+        assertFalse(Files.exists(file));
+        assertTrue(Files.exists(destination.resolve("a.txt")));
+        assertTrue(Files.exists(root.resolve("moving_20261110_100000.csv")));
+        assertTrue(Files.exists(root.resolve("moving_20261110_100000.log")));
+        assertFalse(Files.exists(root.resolve("scansione_20261110_100000.csv.log")));
+    }
+
+    @Test
+    void outputEsistentiNonVengonoSovrascritti(@TempDir Path root) throws Exception {
+        Path trashDir = Files.createDirectories(root.resolve("cestino"));
+        Path file = root.resolve("a.txt");
+        writeFile(root, "a.txt", MTIME);
+        ControlledTrash trash = new ControlledTrash(trashDir);
+        Path manifest = root.resolve("scansione_20261110_100000.csv");
+        Files.writeString(manifest, manifestCsv(root.toString(),
+                row("a.txt", root.toString(), file, "TXT", "2026/11/09", "Yes")),
+                StandardCharsets.UTF_8);
+        Path existingReport = root.resolve("trash_20261110_100000.csv");
+        Path existingAudit = root.resolve("trash_20261110_100000.log");
+        Files.writeString(existingReport, "report precedente", StandardCharsets.UTF_8);
+        Files.writeString(existingAudit, "audit precedente", StandardCharsets.UTF_8);
+
+        OperationResult result = esegui(engine(root, trash), manifest);
+
+        assertEquals(OperationStatus.COMPLETED, result.status());
+        assertEquals("report precedente", Files.readString(existingReport, StandardCharsets.UTF_8));
+        assertEquals("audit precedente", Files.readString(existingAudit, StandardCharsets.UTF_8));
+        assertTrue(Files.exists(root.resolve("trash_20261110_100000_2.csv")));
+        assertTrue(Files.exists(root.resolve("trash_20261110_100000_2.log")));
+    }
+
+    @Test
+    void operazioniConcorrentiRiservanoCoppieDiOutputDistinte(@TempDir Path root) throws Exception {
+        Path file = root.resolve("a.txt");
+        writeFile(root, "a.txt", MTIME);
+        Path manifest = root.resolve("scansione_20261110_100000.csv");
+        Files.writeString(manifest, manifestCsv(root.toString(),
+                row("a.txt", root.toString(), file, "TXT", "2026/11/09", "Yes")),
+                StandardCharsets.UTF_8);
+        CountDownLatch actionsStarted = new CountDownLatch(2);
+        TrashAdapter concurrentTrash = ignored -> {
+            actionsStarted.countDown();
+            try {
+                if (!actionsStarted.await(10, TimeUnit.SECONDS)) {
+                    return new TrashResult(TrashResult.Status.FAILED, "timeout nel test");
+                }
+            } catch (InterruptedException exc) {
+                Thread.currentThread().interrupt();
+                return new TrashResult(TrashResult.Status.FAILED, "test interrotto");
+            }
+            return new TrashResult(TrashResult.Status.FAILED, "errore controllato");
+        };
+        DeletionEngine engine = new DeletionEngine(concurrentTrash,
+                Clock.fixed(FIXED, ZoneOffset.UTC));
+        CountDownLatch finished = new CountDownLatch(2);
+        List<OperationResult> results = new CopyOnWriteArrayList<>();
+        OperationObserver observer = new OperationObserver() {
+            @Override
+            public void onProgress(OperationProgress progress) {
+            }
+
+            @Override
+            public void onFinished(OperationResult result) {
+                results.add(result);
+                finished.countDown();
+            }
+        };
+
+        engine.start(new DeletionCommand(manifest, DeletionMode.TRASH, false), observer);
+        engine.start(new DeletionCommand(manifest, DeletionMode.TRASH, false), observer);
+
+        assertTrue(finished.await(30, TimeUnit.SECONDS));
+        assertEquals(2, results.size());
+        assertTrue(results.stream().allMatch(result -> result.status() == OperationStatus.COMPLETED));
+        assertTrue(Files.exists(root.resolve("trash_20261110_100000.csv")));
+        assertTrue(Files.exists(root.resolve("trash_20261110_100000.log")));
+        assertTrue(Files.exists(root.resolve("trash_20261110_100000_2.csv")));
+        assertTrue(Files.exists(root.resolve("trash_20261110_100000_2.log")));
     }
 }

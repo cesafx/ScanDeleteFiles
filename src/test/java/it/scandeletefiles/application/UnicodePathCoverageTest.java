@@ -225,7 +225,7 @@ class UnicodePathCoverageTest {
             assertTrue(Files.exists(root.resolve(nome)), "il file escluso " + nome + " deve restare intatto");
         }
 
-        Path report = root.resolve("manifest.report.csv");
+        Path report = root.resolve("trash_manifest.csv");
         assertTrue(Files.exists(report));
         String reportContent = Files.readString(report, StandardCharsets.UTF_8);
         assertTrue(reportContent.startsWith("\uFEFF"));
@@ -268,7 +268,7 @@ class UnicodePathCoverageTest {
         assertTrue(Files.exists(root.resolve("файл.txt")));
         assertEquals(2, trash.moved.size());
 
-        Path report = root.resolve("modificato.report.csv");
+        Path report = root.resolve("trash_modificato.csv");
         List<String> righe = Files.readString(report, StandardCharsets.UTF_8).substring(1).lines().toList();
         assertEquals(5, righe.size());
         assertEquals("Cestinato", dividiCsv(righe.get(1))[6]);
@@ -318,7 +318,7 @@ class UnicodePathCoverageTest {
         assertTrue(Files.exists(root.resolve("bravo.txt")), "Delete = No conserva il file");
         assertFalse(Files.exists(root.resolve("charlie.txt")), "Delete = Yes cestina il file");
 
-        Path report = root.resolve("scan-modificato.report.csv");
+        Path report = root.resolve("trash_scan-modificato.csv");
         List<String> reportRighe = Files.readString(report, StandardCharsets.UTF_8).substring(1).lines().toList();
         assertEquals(4, reportRighe.size());
         assertEquals("alfa.txt", dividiCsv(reportRighe.get(1))[0]);
@@ -328,7 +328,7 @@ class UnicodePathCoverageTest {
         assertEquals("charlie.txt", dividiCsv(reportRighe.get(3))[0]);
         assertEquals("Cestinato", dividiCsv(reportRighe.get(3))[6]);
 
-        Path audit = root.resolve("scan-modificato.csv.log");
+        Path audit = root.resolve("trash_scan-modificato.log");
         assertTrue(Files.exists(audit));
         String log = Files.readString(audit, StandardCharsets.UTF_8);
         assertTrue(log.contains("Stato: COMPLETATA"));

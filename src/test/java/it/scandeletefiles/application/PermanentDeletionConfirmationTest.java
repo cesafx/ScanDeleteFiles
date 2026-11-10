@@ -38,7 +38,7 @@ class PermanentDeletionConfirmationTest {
 
         assertEquals(OperationStatus.COMPLETED, result.status());
         assertFalse(Files.exists(file), "la conferma esplicita deve consentire la cancellazione permanente");
-        assertEquals("Eliminato definitivamente", reportRow(root.resolve("confermata.report.csv"))[6]);
+        assertEquals("Eliminato definitivamente", reportRow(root.resolve("deleting_confermata.csv"))[6]);
     }
 
     @Test
@@ -49,7 +49,7 @@ class PermanentDeletionConfirmationTest {
 
         assertEquals(OperationStatus.COMPLETED, result.status());
         assertTrue(Files.exists(file), "senza conferma il file deve restare intatto");
-        String[] reportRow = reportRow(root.resolve("rifiutata.report.csv"));
+        String[] reportRow = reportRow(root.resolve("deleting_rifiutata.csv"));
         assertEquals("Saltato", reportRow[6]);
         assertTrue(reportRow[7].contains("non confermata"));
     }
