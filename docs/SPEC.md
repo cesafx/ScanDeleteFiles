@@ -147,6 +147,8 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 98. Come responsabile della distribuzione, voglio confezionare l’app-image Windows in un archivio ZIP, così da poterla trasferire ed estrarre senza un installer.
 99. Come proprietario del progetto, voglio che il codice sorgente risieda in un repository GitHub privato, così da limitarne l’accesso ai collaboratori autorizzati.
 100. Come sviluppatore, voglio verificare il comportamento usando file e cartelle temporanei, così da non coinvolgere dati reali degli utenti.
+101. Come utente, voglio che il log di scansione riporti le esclusioni per formato, con conteggio e percentuale sul totale visitato dei file scartati perché non inclusi nei filtri selezionati, così da capire se occorre aggiungere la gestione di un nuovo tipo documento.
+102. Come utente, voglio che durante la scansione di grandi quantità di documenti l'interfaccia indichi in modo continuo se l'operazione è attiva (esaminando file, scrivendo il manifesto, scrivendo il log di audit), così da sapere che l'applicazione non si è bloccata.
 
 ## Implementation Decisions
 
@@ -197,6 +199,9 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 - Il manifest non sovrascriverà mai un file o un audit esistente: in caso di collisione verrà aggiunto un suffisso numerico (`_2`, `_3`, ...), comunicando nell’esito il percorso effettivo.
 - Il manifest finale non sarà pubblicato se la scansione viene annullata.
 - La strategia concreta per evitare la presenza di un manifest parziale dovrà garantire che il percorso finale contenga soltanto un file completato.
+- Durante la scansione l'interfaccia riceverà aggiornamenti di progresso anche per i file visitati ma non corrispondenti ai filtri, con conteggio dei file esclusi, così che l'utente veda che l'operazione è attiva anche su grandi volumi di documenti.
+- Al termine della scansione, prima di pubblicare il manifest, l'interfaccia riceverà stati intermedi ("Scrittura manifest CSV in corso...", "Scrittura log di audit in corso...").
+- Il log di audit di scansione includerà una sezione "Esclusioni per formato" con conteggio e percentuale sul totale visitato per ogni estensione scartata perché non inclusa nei filtri selezionati, oltre al totale complessivo delle esclusioni.
 
 ### Contratto del manifest CSV
 
