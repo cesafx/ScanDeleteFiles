@@ -78,7 +78,7 @@ class ScanExclusionsAndProgressTest {
         Path manifest = root.resolve("manifest.csv");
 
         ScanCommand command = new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, manifest);
+                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, false, manifest);
 
         CountDownLatch finished = new CountDownLatch(1);
         AtomicReference<OperationResult> result = new AtomicReference<>();
@@ -130,7 +130,7 @@ class ScanExclusionsAndProgressTest {
         Path manifest = root.resolve("manifest.csv");
 
         ScanCommand command = new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, manifest);
+                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, false, manifest);
 
         CountDownLatch finished = new CountDownLatch(1);
         AtomicReference<OperationResult> result = new AtomicReference<>();
@@ -183,7 +183,7 @@ class ScanExclusionsAndProgressTest {
         Path manifest = root.resolve("manifest.csv");
 
         ScanCommand command = new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, manifest);
+                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, false, manifest);
 
         CountDownLatch finished = new CountDownLatch(1);
         AtomicReference<OperationResult> result = new AtomicReference<>();
@@ -206,5 +206,57 @@ class ScanExclusionsAndProgressTest {
         String log = Files.readString(audit, StandardCharsets.UTF_8);
         assertTrue(log.contains("Esclusioni per formato: nessuna"),
                 "quando non ci sono esclusioni l'audit deve riportarlo");
+    }
+
+    @Test
+    void scanAllFilesIgnoraFiltroFormati(@TempDir Path root) throws Exception {
+        Path txt = root.resolve("a.txt");
+        Path pdf = root.resolve("b.pdf");
+        Path jpg = root.resolve("c.jpg");
+        Files.writeString(txt, "a");
+        Files.writeString(pdf, "b");
+        Files.writeString(jpg, "c");
+
+        Instant before = Instant.parse("2026-11-09T23:00:00Z");
+        for (Path file : List.of(txt, pdf, jpg)) {
+            Files.setLastModifiedTime(file, FileTime.from(before));
+        }
+
+        ScanEngine engine = new ScanEngine(platform());
+        Path manifest = root.resolve("manifest.csv");
+
+        ScanCommand command = new ScanCommand(
+                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, true, manifest);
+
+        CountDownLatch finished = new CountDownLatch(1);
+        AtomicReference<OperationResult> result = new AtomicReference<>();
+        engine.start(command, new OperationObserver() {
+            @Override
+            public void onProgress(OperationProgress progress) {
+            }
+
+            @Override
+            public void onFinished(OperationResult r) {
+                result.set(r);
+                finished.countDown();
+            }
+        });
+
+        assertTrue(finished.await(30, TimeUnit.SECONDS), "la scansione non è terminata");
+        assertEquals(OperationStatus.COMPLETED, result.get().status());
+
+        String contenuto = Files.readString(manifest, StandardCharsets.UTF_8);
+        List<String> righe = contenuto.substring(1).lines()
+                .filter(line -> !line.isBlank()).toList();
+        // Header + 3 file: tutti inclusi nonostante il filtro sia solo TXT
+        assertEquals(4, righe.size(), "con scanAllFiles tutti i file devono essere inclusi");
+        assertTrue(righe.stream().anyMatch(r -> r.startsWith("a.txt;")));
+        assertTrue(righe.stream().anyMatch(r -> r.startsWith("b.pdf;")));
+        assertTrue(righe.stream().anyMatch(r -> r.startsWith("c.jpg;")));
+
+        Path audit = root.resolve("manifest.csv.log");
+        String log = Files.readString(audit, StandardCharsets.UTF_8);
+        assertTrue(log.contains("Esclusioni per formato: nessuna"),
+                "con scanAllFiles non deve esserci alcuna esclusione per formato");
     }
 }

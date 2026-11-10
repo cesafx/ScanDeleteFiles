@@ -10,6 +10,7 @@ public record ScanCommand(
         LocalDate thresholdDate,
         Set<String> extensions,
         boolean includeHidden,
+        boolean scanAllFiles,
         Path manifestDestination) {
 
     public ScanCommand {

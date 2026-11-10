@@ -72,7 +72,7 @@ class ScanAuditLogTest {
         Path manifest = root.resolve("esito.csv");
 
         ScanCommand command = new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, manifest);
+                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, false, manifest);
 
         CountDownLatch finished = new CountDownLatch(1);
         AtomicReference<OperationResult> result = new AtomicReference<>();
@@ -111,7 +111,7 @@ class ScanAuditLogTest {
     }
 
     @Test
-    void annullataNonPubblicaManifestMaScriveAudit(@TempDir Path root) throws Exception {
+    void annullataScriveCsvParzialeEAudit(@TempDir Path root) throws Exception {
         Files.createDirectories(root.resolve("alberone"));
         for (int i = 0; i < 5000; i++) {
             Files.writeString(root.resolve("alberone").resolve("file" + i + ".txt"), "x");
@@ -121,7 +121,7 @@ class ScanAuditLogTest {
         Path manifest = root.resolve("da-annullare.csv");
 
         ScanCommand command = new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, manifest);
+                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, false, manifest);
 
         CountDownLatch finished = new CountDownLatch(1);
         AtomicReference<OperationResult> result = new AtomicReference<>();
@@ -145,7 +145,7 @@ class ScanAuditLogTest {
         assertTrue(finished.await(30, TimeUnit.SECONDS), "la scansione non è terminata");
         assertEquals(OperationStatus.CANCELLED, result.get().status());
         assertTrue(operation.get().isCancellationRequested());
-        assertFalse(Files.exists(manifest), "una scansione annullata non deve pubblicare un manifest parziale");
+        assertTrue(Files.exists(manifest), "una scansione annullata deve pubblicare il file CSV con i dati parziali");
 
         Path audit = root.resolve("da-annullare.csv.log");
         assertTrue(Files.exists(audit), "il log di audit deve essere prodotto anche per la scansione annullata");
@@ -160,7 +160,7 @@ class ScanAuditLogTest {
         Path manifest = root.resolve("cartella-inesistente").resolve("scansione.csv");
 
         OperationResult result = execute(new ScanEngine(platform()), new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, manifest));
+                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, false, manifest));
 
         assertEquals(OperationStatus.FAILED, result.status());
         Path fallbackAudit = root.resolve("scansione.csv.log");
@@ -183,7 +183,7 @@ class ScanAuditLogTest {
         Path requested = root.resolve("scansione_20261109_100000.csv");
         ScanEngine engine = new ScanEngine(platform());
         ScanCommand command = new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, requested);
+                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, false, requested);
 
         assertEquals(OperationStatus.COMPLETED, execute(engine, command).status());
         assertEquals(OperationStatus.COMPLETED, execute(engine, command).status());

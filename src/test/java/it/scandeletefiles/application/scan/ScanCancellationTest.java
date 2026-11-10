@@ -49,7 +49,7 @@ class ScanCancellationTest {
     }
 
     @Test
-    void scansioneAnnullataNonPubblicaManifestMaScriveAuditAnnullata(@TempDir Path root)
+    void scansioneAnnullataScriveCsvParzialeEAudit(@TempDir Path root)
             throws Exception {
         Path alberone = Files.createDirectories(root.resolve("alberone"));
         for (int i = 0; i < 5000; i++) {
@@ -60,7 +60,7 @@ class ScanCancellationTest {
         Path manifest = root.resolve("da-annullare.csv");
 
         ScanCommand command = new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, manifest);
+                root, LocalDate.of(2026, 11, 10), Set.of("TXT"), false, false, manifest);
 
         CountDownLatch finished = new CountDownLatch(1);
         AtomicReference<OperationResult> result = new AtomicReference<>();
@@ -84,8 +84,8 @@ class ScanCancellationTest {
         assertTrue(finished.await(30, TimeUnit.SECONDS), "la scansione non è terminata");
         assertEquals(OperationStatus.CANCELLED, result.get().status());
         assertTrue(operation.get().isCancellationRequested());
-        assertFalse(Files.exists(manifest),
-                "una scansione annullata non deve pubblicare un manifest parziale");
+        assertTrue(Files.exists(manifest),
+                "una scansione annullata deve pubblicare il file CSV con i dati parziali");
 
         Path audit = root.resolve("da-annullare.csv.log");
         assertTrue(Files.exists(audit),

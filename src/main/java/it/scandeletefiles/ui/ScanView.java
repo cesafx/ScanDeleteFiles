@@ -62,6 +62,7 @@ public final class ScanView implements ScreenView {
     private DatePicker threshold;
     private FlowPane extensions;
     private CheckBox includeHidden;
+    private CheckBox scanAllFiles;
     private TextField destination;
     private Button action;
     private Button cancel;
@@ -106,6 +107,8 @@ public final class ScanView implements ScreenView {
         extensions.getStyleClass().add("extension-list");
 
         includeHidden = new CheckBox("Includi file nascosti");
+        scanAllFiles = new CheckBox("Scansiona tutti i file (ignora filtri formati)");
+        scanAllFiles.setSelected(false);
         destination = new TextField();
         destination.setId("scan-destination");
         destination.setPromptText("Posizione e nome del file CSV");
@@ -144,6 +147,7 @@ public final class ScanView implements ScreenView {
                 section("Data limite esclusiva", threshold),
                 section("Formati da includere", extensions),
                 includeHidden,
+                scanAllFiles,
                 section("File CSV di output", fieldRow(destination, chooseDestination)),
                 new VBox(10, action, status));
         return scrollable(content);
@@ -208,6 +212,7 @@ public final class ScanView implements ScreenView {
                 threshold.getValue(),
                 selectedExtensions,
                 includeHidden.isSelected(),
+                scanAllFiles.isSelected(),
                 Path.of(destination.getText()));
 
         currentOperation = null;

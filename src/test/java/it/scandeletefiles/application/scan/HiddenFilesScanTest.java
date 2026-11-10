@@ -114,7 +114,7 @@ class HiddenFilesScanTest {
         ScanEngine engine = new ScanEngine(platform());
         Path manifest = root.resolve("manifest.csv");
         ScanCommand command = new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("txt"), false, manifest);
+                root, LocalDate.of(2026, 11, 10), Set.of("txt"), false, false, manifest);
 
         ScanResult esito = esegui(engine, command);
         assertEquals(OperationStatus.COMPLETED, esito.result.status());
@@ -134,7 +134,7 @@ class HiddenFilesScanTest {
         ScanEngine engine = new ScanEngine(platform());
         Path manifest = root.resolve("manifest.csv");
         ScanCommand command = new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("txt"), true, manifest);
+                root, LocalDate.of(2026, 11, 10), Set.of("txt"), true, false, manifest);
 
         ScanResult esito = esegui(engine, command);
         assertEquals(OperationStatus.COMPLETED, esito.result.status());
@@ -154,7 +154,7 @@ class HiddenFilesScanTest {
         ScanEngine engine = new ScanEngine(platform());
         Path manifest = root.resolve("manifest.csv");
         ScanCommand command = new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("txt"), false, manifest);
+                root, LocalDate.of(2026, 11, 10), Set.of("txt"), false, false, manifest);
 
         ScanResult esito = esegui(engine, command);
         assertEquals(OperationStatus.COMPLETED, esito.result.status());
@@ -174,7 +174,7 @@ class HiddenFilesScanTest {
         ScanEngine engine = new ScanEngine(platform());
         Path manifest = root.resolve("manifest.csv");
         ScanCommand command = new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("txt"), true, manifest);
+                root, LocalDate.of(2026, 11, 10), Set.of("txt"), true, false, manifest);
 
         ScanResult esito = esegui(engine, command);
         assertEquals(OperationStatus.COMPLETED, esito.result.status());

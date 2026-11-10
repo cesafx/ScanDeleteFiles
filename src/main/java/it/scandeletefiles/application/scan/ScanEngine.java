@@ -145,7 +145,9 @@ public final class ScanEngine implements ScanApplicationService {
                                 }
                                 context.visited++;
                                 String format = extensionOf(file);
-                                if (!extensions.contains(format)) {
+                                boolean formatoAccettato = command.scanAllFiles()
+                                        || extensions.contains(format);
+                                if (!formatoAccettato) {
                                     context.excludedByFormat.merge(format, 1, Integer::sum);
                                     notifyProgress(OperationProgress.indeterminate(
                                             context.visited,
@@ -219,7 +221,13 @@ public final class ScanEngine implements ScanApplicationService {
 
         private void cancelled(Instant start, Instant end, ScanContext context) {
             try {
-                writeAudit(command.manifestDestination(), OperationStatus.CANCELLED, start, end, context,
+                // Scrivi il file CSV con i dati parziali raccolti fino all'annullamento
+                List<CsvRow> rows = context.matching.stream()
+                        .sorted(Comparator.comparing(CsvRow::fullPath))
+                        .collect(Collectors.toUnmodifiableList());
+                Path manifest = writeCsv(command.manifestDestination(), rows);
+                // Scrivi l'audit accanto al CSV effettivamente pubblicato
+                writeAudit(manifest, OperationStatus.CANCELLED, start, end, context,
                         "Annullata dall'utente prima del completamento", null);
             } catch (IOException exc) {
                 // il log di audit deve essere prodotto anche quando la scansione viene annullata

@@ -84,7 +84,7 @@ class ScanHappyPathTest {
         Path manifest = root.resolve("manifest.csv");
 
         ScanCommand command = new ScanCommand(
-                root, LocalDate.of(2026, 11, 10), Set.of("txt"), false, manifest);
+                root, LocalDate.of(2026, 11, 10), Set.of("txt"), false, false, manifest);
 
         CountDownLatch finished = new CountDownLatch(1);
         AtomicReference<OperationResult> result = new AtomicReference<>();

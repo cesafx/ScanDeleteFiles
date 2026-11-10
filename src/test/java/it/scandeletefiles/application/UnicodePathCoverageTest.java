@@ -188,7 +188,7 @@ class UnicodePathCoverageTest {
         Path manifest = root.resolve("manifest.csv");
 
         OperationResult esito = eseguiScan(scan,
-                new ScanCommand(root, LocalDate.of(2026, 11, 10), Set.of("txt"), false, manifest));
+                new ScanCommand(root, LocalDate.of(2026, 11, 10), Set.of("txt"), false, false, manifest));
         assertEquals(OperationStatus.COMPLETED, esito.status());
 
         String contenuto = Files.readString(manifest, StandardCharsets.UTF_8);
@@ -291,7 +291,7 @@ class UnicodePathCoverageTest {
         Path manifest = root.resolve("scan.csv");
 
         OperationResult esito = eseguiScan(scan,
-                new ScanCommand(root, LocalDate.of(2026, 11, 10), Set.of("txt"), false, manifest));
+                new ScanCommand(root, LocalDate.of(2026, 11, 10), Set.of("txt"), false, false, manifest));
         assertEquals(OperationStatus.COMPLETED, esito.status());
 
         // L'utente apre il manifest prodotto dalla scansione e imposta bravo.txt su No:
