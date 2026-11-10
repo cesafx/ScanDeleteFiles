@@ -61,8 +61,8 @@ jobs:
           Expand-Archive -Path $zip.FullName -DestinationPath $extract
 
           $exe = Get-ChildItem $extract -Filter "ScanDeleteFiles.exe" -Recurse | Select-Object -First 1
-          $runtime = Get-ChildItem $extract -Filter "java.exe" -Recurse |
-            Where-Object { $_.FullName -match "[\\/]runtime[\\/]bin[\\/]java.exe$" } |
+          $runtime = Get-ChildItem $extract -Filter "jvm.dll" -Recurse |
+            Where-Object { $_.FullName -match "[\\/]runtime[\\/]bin[\\/]server[\\/]jvm.dll$" } |
             Select-Object -First 1
           $appDirectory = Get-ChildItem $extract -Directory -Recurse |
             Where-Object { $_.Name -eq "app" } |
@@ -114,11 +114,13 @@ jobs:
               Select-Object -First 1
             $stdout = Join-Path $env:RUNNER_TEMP "launcher.stdout.log"
             $stderr = Join-Path $env:RUNNER_TEMP "launcher.stderr.log"
-            $diagnostic = Start-Process -FilePath $runtimeJava.FullName `
-              -ArgumentList @("-cp", "$($appDirectory.FullName)\*", "it.scandeletefiles.ScanDeleteFilesLauncher") `
-              -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
-            Start-Sleep -Seconds 10
-            if (-not $diagnostic.HasExited) { Stop-Process -Id $diagnostic.Id -Force }
+            if ($runtimeJava) {
+              $diagnostic = Start-Process -FilePath $runtimeJava.FullName `
+                -ArgumentList @("-cp", "$($appDirectory.FullName)\*", "it.scandeletefiles.ScanDeleteFilesLauncher") `
+                -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+              Start-Sleep -Seconds 10
+              if (-not $diagnostic.HasExited) { Stop-Process -Id $diagnostic.Id -Force }
+            }
             $configDetails = if ($config) { (Get-Content $config.FullName) -join "%0A" } else { "config launcher non trovato" }
             $diagnosticDetails = ((Get-Content $stdout -ErrorAction SilentlyContinue) +
               (Get-Content $stderr -ErrorAction SilentlyContinue)) -join "%0A"
