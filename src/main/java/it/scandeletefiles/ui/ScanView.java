@@ -1,7 +1,7 @@
 package it.scandeletefiles.ui;
 
 import static it.scandeletefiles.ui.ViewSupport.fieldRow;
-import static it.scandeletefiles.ui.ViewSupport.pendingChooser;
+
 import static it.scandeletefiles.ui.ViewSupport.screenContent;
 import static it.scandeletefiles.ui.ViewSupport.scrollable;
 import static it.scandeletefiles.ui.ViewSupport.section;
@@ -15,6 +15,7 @@ import it.scandeletefiles.application.OperationStatus;
 import it.scandeletefiles.application.ScanApplicationService;
 import it.scandeletefiles.application.ScanCommand;
 import it.scandeletefiles.navigation.AppScreen;
+import java.io.File;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -35,6 +36,9 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.stage.DirectoryChooser;
+import javafx.stage.FileChooser;
+import javafx.stage.Window;
 
 public final class ScanView implements ScreenView {
     private static final List<String> DEFAULT_EXTENSIONS = List.of(
@@ -67,8 +71,11 @@ public final class ScanView implements ScreenView {
         VBox content = screenContent(AppScreen.SCAN);
 
         root = new TextField();
+        root.setId("scan-root");
         root.setPromptText("Cartella locale, montata o percorso UNC");
-        Button chooseRoot = pendingChooser("Scegli cartella", "choose-scan-root");
+        Button chooseRoot = new Button("Scegli cartella");
+        chooseRoot.setId("choose-scan-root");
+        chooseRoot.setOnAction(event -> chooseRootFolder(chooseRoot));
         HBox rootRow = fieldRow(root, chooseRoot);
 
         threshold = new DatePicker();
@@ -88,8 +95,11 @@ public final class ScanView implements ScreenView {
 
         includeHidden = new CheckBox("Includi file nascosti");
         destination = new TextField();
+        destination.setId("scan-destination");
         destination.setPromptText("Posizione e nome del manifest CSV");
-        Button chooseDestination = pendingChooser("Scegli destinazione", "choose-scan-destination");
+        Button chooseDestination = new Button("Scegli destinazione");
+        chooseDestination.setId("choose-scan-destination");
+        chooseDestination.setOnAction(event -> chooseManifestDestination(chooseDestination));
 
         action = new Button(AppScreen.SCAN.actionLabel());
         action.setDisable(true);
@@ -125,6 +135,59 @@ public final class ScanView implements ScreenView {
                 section("Manifest CSV", fieldRow(destination, chooseDestination)),
                 new VBox(10, action, status));
         return scrollable(content);
+    }
+
+    private void chooseRootFolder(Button source) {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("Scegli la cartella da analizzare");
+        initialDirectory(root.getText()).ifPresent(chooser::setInitialDirectory);
+        File selected = chooser.showDialog(ownerOf(source));
+        if (selected != null) {
+            root.setText(selected.toPath().toString());
+        }
+    }
+
+    private void chooseManifestDestination(Button source) {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Scegli dove salvare il manifest CSV");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("File CSV (*.csv)", "*.csv"));
+        Path proposed = pathOrNull(destination.getText());
+        if (proposed != null) {
+            Path parent = proposed.getParent();
+            if (parent != null && parent.toFile().isDirectory()) {
+                chooser.setInitialDirectory(parent.toFile());
+            }
+            if (proposed.getFileName() != null) {
+                chooser.setInitialFileName(proposed.getFileName().toString());
+            }
+        }
+        File selected = chooser.showSaveDialog(ownerOf(source));
+        if (selected != null) {
+            String selectedPath = selected.toPath().toString();
+            destination.setText(selectedPath.toLowerCase(Locale.ROOT).endsWith(".csv")
+                    ? selectedPath : selectedPath + ".csv");
+        }
+    }
+
+    private static java.util.Optional<File> initialDirectory(String value) {
+        Path path = pathOrNull(value);
+        return path != null && path.toFile().isDirectory()
+                ? java.util.Optional.of(path.toFile()) : java.util.Optional.empty();
+    }
+
+    private static Path pathOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Path.of(value.trim());
+        } catch (RuntimeException invalidPath) {
+            return null;
+        }
+    }
+
+    private static Window ownerOf(Button source) {
+        return source.getScene() == null ? null : source.getScene().getWindow();
     }
 
     private void validate() {

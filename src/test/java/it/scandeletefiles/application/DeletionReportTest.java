@@ -198,4 +198,21 @@ class DeletionReportTest {
         assertTrue(log.contains("Righe saltate: 2"));
         assertTrue(log.contains("Errori: 1"));
     }
+
+    @Test
+    void reportDiScansioneUsaNomeCancellazione(@TempDir Path root) throws Exception {
+        Path trashDir = Files.createDirectories(root.resolve("cestino"));
+        Path file = root.resolve("a.txt");
+        writeFile(root, "a.txt", MTIME);
+        ControlledTrash trash = new ControlledTrash(trashDir);
+        Path manifest = root.resolve("scansione_20261110_100000.csv");
+        Files.writeString(manifest, manifestCsv(root.toString(),
+                row("a.txt", root.toString(), file, "TXT", "2026/11/09", "Yes")),
+                StandardCharsets.UTF_8);
+
+        esegui(engine(root, trash), manifest);
+
+        assertTrue(Files.exists(root.resolve("cancellazione_20261110_100000.csv")));
+        assertFalse(Files.exists(root.resolve("scansione_20261110_100000.report.csv")));
+    }
 }

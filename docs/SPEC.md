@@ -230,6 +230,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 - Qualsiasi altro valore in `Delete` sarà un errore.
 - Prima della cancellazione sarà verificata l’esistenza del file.
 - Prima della cancellazione sarà confrontata la data corrente di ultima modifica con `Data ultima modifica`.
+- La cancellazione accetterà sia il formato prodotto dalla scansione `yyyy/MM/dd`, sia il formato `dd/MM/yyyy` con cui Excel italiano può risalvare la stessa data.
 - Il confronto della data avverrà a livello di giorno.
 - Una mancata corrispondenza della data impedirà la cancellazione e sarà riportata nel report.
 - È accettato che una modifica o sostituzione avvenuta nello stesso giorno della data registrata non sia rilevabile con il contratto attuale del manifest.
@@ -256,6 +257,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 ### Report di cancellazione
 
 - Il report sarà salvato accanto al CSV di input.
+- Per un manifest `scansione_<timestamp>.csv`, il report sarà chiamato `cancellazione_<timestamp>.csv`, così da distinguere chiaramente input e risultato.
 - Conterrà le sei colonne originali, nello stesso ordine, seguite da:
   7. `Esito`
   8. `Dettaglio`

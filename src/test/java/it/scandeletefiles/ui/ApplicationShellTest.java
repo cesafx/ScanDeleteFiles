@@ -45,8 +45,8 @@ class ApplicationShellTest {
             view.layout();
 
             assertEquals("Scansione", title(scene).getText());
-            assertDisabled(scene, "#choose-scan-root");
-            assertDisabled(scene, "#choose-scan-destination");
+            assertEnabled(scene, "#choose-scan-root");
+            assertEnabled(scene, "#choose-scan-destination");
 
             Button deleteNavigation = (Button) scene.lookup("#delete-navigation");
             assertNotNull(deleteNavigation);

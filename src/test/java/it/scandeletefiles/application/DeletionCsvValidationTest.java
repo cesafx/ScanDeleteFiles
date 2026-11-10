@@ -312,4 +312,24 @@ class DeletionCsvValidationTest {
         assertEquals("Saltato", lines.get(2).split(";", -1)[6]);
         assertEquals("Saltato", lines.get(3).split(";", -1)[6]);
     }
+
+    @Test
+    void dataRiscrittaDaExcelItalianoVieneAccettata(@TempDir Path root) throws Exception {
+        Path trashDir = Files.createDirectories(root.resolve("cestino"));
+        Path file = root.resolve("file.txt");
+        writeFile(root, "file.txt", MTIME);
+        ControlledTrash trash = new ControlledTrash(trashDir);
+
+        Path manifest = root.resolve("scansione_20261110_100000.csv");
+        Files.writeString(manifest, manifestCsv(root.toString(),
+                row("file.txt", root.toString(), file, "TXT", "09/11/2026", "Yes")),
+                StandardCharsets.UTF_8);
+
+        OperationResult result = esegui(engine(root, trash), manifest);
+
+        assertEquals(OperationStatus.COMPLETED, result.status());
+        assertFalse(Files.exists(file),
+                "la data nel formato salvato da Excel italiano deve autorizzare il cestino");
+        assertEquals(1, trash.moved.size());
+    }
 }

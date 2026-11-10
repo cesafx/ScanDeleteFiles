@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -50,7 +51,9 @@ public final class DeletionEngine implements DeletionApplicationService {
             "Data ultima modifica",
             "Delete"
     };
-    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd");
+    private static final List<DateTimeFormatter> DATE_FORMATS = List.of(
+            DateTimeFormatter.ofPattern("uuuu/MM/dd").withResolverStyle(ResolverStyle.STRICT),
+            DateTimeFormatter.ofPattern("d/M/uuuu").withResolverStyle(ResolverStyle.STRICT));
     private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
     private static final String BOM = "\uFEFF";
 
@@ -92,11 +95,15 @@ public final class DeletionEngine implements DeletionApplicationService {
             if (fields.length <= 4) {
                 return null;
             }
-            try {
-                return LocalDate.parse(fields[4].trim(), DATE_FORMAT);
-            } catch (DateTimeParseException exc) {
-                return null;
+            String value = fields[4].trim();
+            for (DateTimeFormatter formatter : DATE_FORMATS) {
+                try {
+                    return LocalDate.parse(value, formatter);
+                } catch (DateTimeParseException ignored) {
+                    // Excel italiano può riscrivere yyyy/MM/dd come dd/MM/yyyy.
+                }
             }
+            return null;
         }
 
         boolean malformed() {
@@ -470,10 +477,16 @@ public final class DeletionEngine implements DeletionApplicationService {
         private static Path reportPath(Path manifest) {
             String name = manifest.getFileName().toString();
             Path parent = manifest.getParent() == null ? Path.of(".") : manifest.getParent();
-            if (name.toLowerCase(Locale.ROOT).endsWith(".csv")) {
-                return parent.resolve(name.substring(0, name.length() - 4) + ".report.csv");
+            String base = name.toLowerCase(Locale.ROOT).endsWith(".csv")
+                    ? name.substring(0, name.length() - 4)
+                    : name;
+            if (base.equalsIgnoreCase("scansione")) {
+                return parent.resolve("cancellazione.csv");
             }
-            return parent.resolve(name + ".report.csv");
+            if (base.regionMatches(true, 0, "scansione_", 0, "scansione_".length())) {
+                return parent.resolve("cancellazione_" + base.substring("scansione_".length()) + ".csv");
+            }
+            return parent.resolve(base + ".report.csv");
         }
 
         private static String escapeCsv(String value) {
