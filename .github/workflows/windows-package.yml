@@ -35,7 +35,14 @@ jobs:
 
       - name: Test e creazione pacchetto
         shell: pwsh
-        run: .\mvnw.cmd -B -Pwindows-package clean package
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "windows-package.log"
+          & .\mvnw.cmd -B -Pwindows-package clean package 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            $tail = (Get-Content $log -Tail 50) -join "%0A"
+            Write-Output "::error title=Creazione pacchetto Windows fallita::$tail"
+            exit $LASTEXITCODE
+          }
 
       - name: Verifica contenuto ZIP
         id: package
