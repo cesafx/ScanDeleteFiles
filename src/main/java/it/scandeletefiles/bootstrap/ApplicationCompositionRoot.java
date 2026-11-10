@@ -32,6 +32,6 @@ public record ApplicationCompositionRoot(
         ExtensionPreferences extensions = new ExtensionPreferences(platform.settings());
         return new ApplicationShell(navigation,
                 new ScanView(services.scan(), extensions, new JavaFxPathChooserAdapter()),
-                new DeletionView(services.deletion())).createView();
+                new DeletionView(services.deletion(), null, new JavaFxPathChooserAdapter())).createView();
     }
 }

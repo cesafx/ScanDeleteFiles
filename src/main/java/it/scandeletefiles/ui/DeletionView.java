@@ -14,6 +14,7 @@ import it.scandeletefiles.application.OperationResult;
 import it.scandeletefiles.application.OperationStatus;
 import it.scandeletefiles.application.PermanentDeletionConfirmation;
 import it.scandeletefiles.navigation.AppScreen;
+import it.scandeletefiles.platform.PathChooserAdapter;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -36,25 +37,36 @@ public final class DeletionView implements ScreenView {
 
     private final DeletionApplicationService deletionService;
     private final PermanentDeletionConfirmation permanentDeletionConfirmation;
+    private final PathChooserAdapter pathChooser;
 
     private TextField manifest;
     private Button chooseManifest;
     private RadioButton trashMode;
     private RadioButton permanentMode;
+    private RadioButton moveMode;
+    private TextField destination;
+    private Button chooseDestination;
     private Button action;
     private Button cancel;
     private Label status;
     private CancellableState currentOperation;
 
     public DeletionView(DeletionApplicationService deletionService) {
-        this(deletionService, DeletionView::showPermanentDeletionConfirmation);
+        this(deletionService, DeletionView::showPermanentDeletionConfirmation, null);
     }
 
     DeletionView(DeletionApplicationService deletionService,
                  PermanentDeletionConfirmation permanentDeletionConfirmation) {
+        this(deletionService, permanentDeletionConfirmation, null);
+    }
+
+    public DeletionView(DeletionApplicationService deletionService,
+                 PermanentDeletionConfirmation permanentDeletionConfirmation,
+                 PathChooserAdapter pathChooser) {
         this.deletionService = Objects.requireNonNull(deletionService, "deletionService");
-        this.permanentDeletionConfirmation = Objects.requireNonNull(
-                permanentDeletionConfirmation, "permanentDeletionConfirmation");
+        this.permanentDeletionConfirmation = permanentDeletionConfirmation != null
+                ? permanentDeletionConfirmation : DeletionView::showPermanentDeletionConfirmation;
+        this.pathChooser = pathChooser;
     }
 
     @Override
@@ -77,8 +89,19 @@ public final class DeletionView implements ScreenView {
         permanentMode = new RadioButton("Cancella definitivamente");
         permanentMode.setId("permanent-deletion-mode");
         permanentMode.setToggleGroup(mode);
+        moveMode = new RadioButton("Sposta in cartella");
+        moveMode.setId("move-deletion-mode");
+        moveMode.setToggleGroup(mode);
 
-        VBox modes = new VBox(10, trashMode, permanentMode);
+        destination = new TextField();
+        destination.setId("move-destination");
+        destination.setPromptText("Cartella di destinazione");
+        chooseDestination = new Button("Scegli cartella");
+        chooseDestination.setId("choose-move-destination");
+        chooseDestination.setOnAction(event -> chooseDestination());
+        HBox destinationRow = fieldRow(destination, chooseDestination);
+
+        VBox modes = new VBox(10, trashMode, permanentMode, moveMode, destinationRow);
         modes.getStyleClass().add("choice-panel");
 
         action = new Button(AppScreen.DELETE.actionLabel());
@@ -99,6 +122,7 @@ public final class DeletionView implements ScreenView {
         status.setId("deletion-status");
 
         manifest.textProperty().addListener((observable, oldValue, newValue) -> validate());
+        destination.textProperty().addListener((observable, oldValue, newValue) -> validate());
 
         content.getChildren().addAll(
                 section("Manifest da elaborare", manifestRow),
@@ -121,19 +145,48 @@ public final class DeletionView implements ScreenView {
 
     private void validate() {
         boolean ready = !manifest.getText().isBlank();
+        if (ready && moveMode.isSelected()) {
+            ready = !destination.getText().isBlank();
+        }
         action.setDisable(!ready);
     }
 
-    private void startDeletion() {
-        DeletionMode mode = trashMode.isSelected() ? DeletionMode.TRASH : DeletionMode.PERMANENT;
-        boolean confirmed = mode == DeletionMode.PERMANENT
-                && permanentDeletionConfirmation.confirm(PermanentDeletionConfirmation.WARNING)
-                == PermanentDeletionConfirmation.Result.CONFIRMED;
-        if (mode == DeletionMode.PERMANENT && !confirmed) {
-            status.setText("Cancellazione permanente non confermata: nessun file eliminato");
+    private void chooseDestination() {
+        Path proposed = Path.of(destination.getText().trim());
+        if (pathChooser != null) {
+            pathChooser.chooseCsvDestination(proposed.normalize())
+                    .ifPresent(selected -> destination.setText(selected.toString()));
             return;
         }
-        DeletionCommand command = new DeletionCommand(Path.of(manifest.getText().trim()), mode, confirmed);
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Scegli la cartella di destinazione");
+        Window owner = chooseDestination.getScene() == null ? null : chooseDestination.getScene().getWindow();
+        File selected = chooser.showOpenDialog(owner);
+        if (selected != null) {
+            destination.setText(selected.toPath().toString());
+        }
+    }
+
+    private void startDeletion() {
+        DeletionMode mode;
+        boolean confirmed = false;
+        Path destinationPath = null;
+        if (trashMode.isSelected()) {
+            mode = DeletionMode.TRASH;
+        } else if (permanentMode.isSelected()) {
+            mode = DeletionMode.PERMANENT;
+            confirmed = permanentDeletionConfirmation.confirm(PermanentDeletionConfirmation.WARNING)
+                    == PermanentDeletionConfirmation.Result.CONFIRMED;
+            if (!confirmed) {
+                status.setText("Cancellazione permanente non confermata: nessun file eliminato");
+                return;
+            }
+        } else {
+            mode = DeletionMode.MOVE_TO_FOLDER;
+            destinationPath = Path.of(destination.getText().trim());
+        }
+        DeletionCommand command = new DeletionCommand(
+                Path.of(manifest.getText().trim()), mode, confirmed, destinationPath);
 
         currentOperation = null;
         action.setDisable(true);

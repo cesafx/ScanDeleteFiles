@@ -2,5 +2,6 @@ package it.scandeletefiles.application;
 
 public enum DeletionMode {
     TRASH,
-    PERMANENT
+    PERMANENT,
+    MOVE_TO_FOLDER
 }

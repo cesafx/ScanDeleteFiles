@@ -60,6 +60,7 @@ public final class DeletionEngine implements DeletionApplicationService {
 
     private static final String ESITO_CESTINATO = "Cestinato";
     private static final String ESITO_ELIMINATO = "Eliminato definitivamente";
+    private static final String ESITO_SPOSTATO = "Spostato";
     private static final String ESITO_SALTATO = "Saltato";
     private static final String ESITO_ERRORE = "Errore";
     private static final String ESITO_NON_ELABORATO = "Non elaborato";
@@ -154,6 +155,7 @@ public final class DeletionEngine implements DeletionApplicationService {
         int daEliminare;
         int cestinati;
         int eliminatiPermanentemente;
+        int spostati;
         int saltate;
         int errori;
         final Map<String, Integer> perFormat = new TreeMap<>();
@@ -299,6 +301,21 @@ public final class DeletionEngine implements DeletionApplicationService {
                                 "Impossibile eliminare definitivamente: " + exc.getMessage());
                     }
                 }
+                case MOVE_TO_FOLDER -> {
+                    Path targetDir = command.destination();
+                    Path target = targetDir.resolve(file.getFileName());
+                    Path uniqueTarget = uniqueDestination(target);
+                    try {
+                        Files.move(file, uniqueTarget, StandardCopyOption.REPLACE_EXISTING);
+                        context.spostati++;
+                        return new RowOutcome(ESITO_SPOSTATO,
+                                "Spostato in: " + uniqueTarget);
+                    } catch (IOException exc) {
+                        context.errori++;
+                        return new RowOutcome(ESITO_ERRORE,
+                                "Impossibile spostare il file: " + exc.getMessage());
+                    }
+                }
                 default -> {
                     context.errori++;
                     return new RowOutcome(ESITO_ERRORE, "Modalità di cancellazione non riconosciuta");
@@ -421,6 +438,7 @@ public final class DeletionEngine implements DeletionApplicationService {
             lines.add("Righe Da eliminare: " + context.daEliminare);
             lines.add("File cestinati: " + context.cestinati);
             lines.add("File eliminati permanentemente: " + context.eliminatiPermanentemente);
+            lines.add("File spostati in cartella: " + context.spostati);
             lines.add("Righe saltate: " + context.saltate);
             lines.add("Errori: " + context.errori);
             lines.add("Percentuali per formato:");
@@ -449,10 +467,12 @@ public final class DeletionEngine implements DeletionApplicationService {
             return switch (status) {
                 case COMPLETED -> "Cancellazione completata: " + context.cestinati + " cestinati, "
                         + context.eliminatiPermanentemente + " eliminati definitivamente, "
+                        + context.spostati + " spostati, "
                         + context.saltate + " saltati, " + context.errori + " errori";
                 case CANCELLED -> "Cancellazione annullata: " + context.elaborate + " / "
                         + context.controllate + " righe elaborate, " + context.cestinati + " cestinati, "
                         + context.eliminatiPermanentemente + " eliminati definitivamente, "
+                        + context.spostati + " spostati, "
                         + context.saltate + " saltati, " + context.errori + " errori";
                 case FAILED -> "Cancellazione fallita";
             };
@@ -463,6 +483,7 @@ public final class DeletionEngine implements DeletionApplicationService {
                     "Righe elaborate: " + context.elaborate + " / " + context.controllate
                             + "; cestinati: " + context.cestinati
                             + "; eliminati definitivamente: " + context.eliminatiPermanentemente
+                            + "; spostati: " + context.spostati
                             + "; saltati: " + context.saltate
                             + "; errori: " + context.errori);
         }
@@ -487,6 +508,22 @@ public final class DeletionEngine implements DeletionApplicationService {
                 Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             } catch (AtomicMoveNotSupportedException exc) {
                 Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+
+        private static Path uniqueDestination(Path target) {
+            if (!Files.exists(target)) {
+                return target;
+            }
+            String name = target.getFileName().toString();
+            int dot = name.lastIndexOf('.');
+            String stem = dot > 0 ? name.substring(0, dot) : name;
+            String ext = dot > 0 ? name.substring(dot) : "";
+            for (int sequence = 2; ; sequence++) {
+                Path candidate = target.resolveSibling(stem + "_" + sequence + ext);
+                if (!Files.exists(candidate)) {
+                    return candidate;
+                }
             }
         }
 
