@@ -79,7 +79,7 @@ class DeletionLifecycleTest {
         assertEquals(4, last.completed());
         assertEquals(4, last.total().orElseThrow());
         assertEquals(
-                "Righe elaborate: 4 / 4; cestinati: 1; eliminati definitivamente: 0; saltati: 1; errori: 2",
+                "Righe elaborate: 4 / 4; cestinati: 1; eliminati definitivamente: 0; spostati: 0; saltati: 1; errori: 2",
                 last.message());
         assertEquals(OperationStatus.COMPLETED, result.get().status());
         assertTrue(result.get().message().contains("1 cestinati"));

@@ -147,6 +147,9 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 98. Come responsabile della distribuzione, voglio confezionare l’app-image Windows in un archivio ZIP, così da poterla trasferire ed estrarre senza un installer.
 99. Come proprietario del progetto, voglio che il codice sorgente risieda in un repository GitHub privato, così da limitarne l’accesso ai collaboratori autorizzati.
 100. Come sviluppatore, voglio verificare il comportamento usando file e cartelle temporanei, così da non coinvolgere dati reali degli utenti.
+101. Come utente, voglio spostare i file marcati per l'eliminazione in una cartella di destinazione scelta da me, così da poterli archiviare invece di eliminarli.
+102. Come utente, voglio scegliere la cartella di destinazione nella schermata di cancellazione, così da controllare dove verranno spostati i file.
+103. Come utente, voglio che un file già presente nella cartella di destinazione non venga sovrascritto: verrà aggiunto un suffisso numerico al nome per preservare entrambi i file.
 
 ## Implementation Decisions
 
@@ -246,6 +249,10 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 - Se il cestino non è disponibile, il file sarà saltato e l’indisponibilità sarà riportata.
 - Non sarà mai effettuato un fallback automatico dalla modalità cestino alla cancellazione permanente.
 - L’integrazione con il cestino sarà isolata dietro un seam di piattaforma, così da distinguere capacità disponibile, successo e fallimento senza vincolare le regole applicative a una specifica implementazione nativa.
+- Lo spostamento in una cartella di destinazione scelta dall'utente sarà una modalità opzionale della cancellazione.
+- La modalità di spostamento richiederà la selezione esplicita della cartella di destinazione prima dell'avvio.
+- Se un file con lo stesso nome esiste già nella cartella di destinazione, verrà aggiunto un suffisso numerico (_2, _3, ...) per evitare sovrascritture.
+- Lo spostamento non richiederà una schermata riepilogativa né una conferma aggiuntiva.
 
 ### Annullamento
 
@@ -291,6 +298,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
   - numero di righe con `Delete=Yes`;
   - numero di file spostati nel cestino;
   - numero di file eliminati permanentemente;
+  - numero di file spostati in cartella;
   - numero di righe saltate;
   - numero di errori;
   - percentuali per formato tra le righe conteggiate come `Delete=Yes`.
