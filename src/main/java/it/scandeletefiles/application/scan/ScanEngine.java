@@ -35,6 +35,7 @@ import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
@@ -76,6 +77,7 @@ public final class ScanEngine implements ScanApplicationService {
     private static final class ScanContext {
         int visited;
         final List<CsvRow> matching = new ArrayList<>();
+        final Map<String, Integer> excludedByFormat = new TreeMap<>();
         final List<String> accessErrors = new ArrayList<>();
     }
 
@@ -144,10 +146,25 @@ public final class ScanEngine implements ScanApplicationService {
                                 context.visited++;
                                 String format = extensionOf(file);
                                 if (!extensions.contains(format)) {
+                                    context.excludedByFormat.merge(format, 1, Integer::sum);
+                                    notifyProgress(OperationProgress.indeterminate(
+                                            context.visited,
+                                            "File esaminati: " + context.visited
+                                                    + ", corrispondenti: " + context.matching.size()
+                                                    + ", esclusi: " + context.excludedByFormat.values().stream()
+                                                    .mapToInt(Integer::intValue).sum()
+                                    ));
                                     return FileVisitResult.CONTINUE;
                                 }
                                 Instant modified = Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS).toInstant();
                                 if (!modified.isBefore(threshold)) {
+                                    notifyProgress(OperationProgress.indeterminate(
+                                            context.visited,
+                                            "File esaminati: " + context.visited
+                                                    + ", corrispondenti: " + context.matching.size()
+                                                    + ", esclusi: " + context.excludedByFormat.values().stream()
+                                                    .mapToInt(Integer::intValue).sum()
+                                    ));
                                     return FileVisitResult.CONTINUE;
                                 }
                                 context.matching.add(new CsvRow(
@@ -187,10 +204,14 @@ public final class ScanEngine implements ScanApplicationService {
 
         private void complete(Instant start, Clock clock, ScanContext context) throws IOException {
             Instant end = clock.instant();
+            notifyProgress(OperationProgress.indeterminate(context.visited,
+                    "Scrittura manifest CSV in corso..."));
             List<CsvRow> rows = context.matching.stream()
                     .sorted(Comparator.comparing(CsvRow::fullPath))
                     .collect(Collectors.toUnmodifiableList());
             Path manifest = writeCsv(command.manifestDestination(), rows);
+            notifyProgress(OperationProgress.indeterminate(context.visited,
+                    "Scrittura log di audit in corso..."));
             writeAudit(manifest, OperationStatus.COMPLETED, start, end, context, null, null);
             notifyFinished(new OperationResult(OperationStatus.COMPLETED,
                     "Scansione completata: " + rows.size() + " file corrispondenti. Manifesto: " + manifest));
@@ -317,6 +338,22 @@ public final class ScanEngine implements ScanApplicationService {
             lines.add("Errori di accesso: " + context.accessErrors.size());
             for (String error : context.accessErrors) {
                 lines.add("  " + error);
+            }
+            if (!context.excludedByFormat.isEmpty()) {
+                lines.add("");
+                lines.add("Esclusioni per formato (file scartati perché non inclusi nei filtri):");
+                long totalExcluded = context.excludedByFormat.values().stream().mapToLong(Long::valueOf).sum();
+                for (var entry : context.excludedByFormat.entrySet()) {
+                    lines.add("  " + entry.getKey() + ": " + entry.getValue()
+                            + " (" + String.format(Locale.ITALIAN, "%.1f%%",
+                            100.0 * entry.getValue() / context.visited) + " del totale visitato)");
+                }
+                lines.add("  Totale esclusi: " + totalExcluded
+                        + " (" + String.format(Locale.ITALIAN, "%.1f%%",
+                        100.0 * totalExcluded / context.visited) + " del totale visitato)");
+            } else if (context.visited > 0) {
+                lines.add("");
+                lines.add("Esclusioni per formato: nessuna (tutti i file visitati corrispondono ai filtri selezionati)");
             }
             if (note != null) {
                 lines.add("");
