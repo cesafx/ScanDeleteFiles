@@ -3,6 +3,9 @@ package it.scandeletefiles.application;
 import it.scandeletefiles.platform.TrashAdapter;
 import it.scandeletefiles.platform.TrashResult;
 import it.scandeletefiles.application.csv.CsvFormat;
+import it.scandeletefiles.application.move.MoveJournal;
+import it.scandeletefiles.application.move.MoveJournalCodec;
+import it.scandeletefiles.application.move.MoveUndoEngine;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -12,6 +15,8 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.time.Instant;
@@ -76,6 +81,7 @@ public final class DeletionEngine implements DeletionApplicationService {
     private final TrashAdapter trash;
     private final Clock clock;
     private final DirectoryTimeRestorer directoryTimeRestorer;
+    private final MoveJournalCodec moveJournalCodec = new MoveJournalCodec();
 
     @FunctionalInterface
     interface DirectoryTimeRestorer {
@@ -183,6 +189,7 @@ public final class DeletionEngine implements DeletionApplicationService {
         final List<String> fileMetadataErrors = new ArrayList<>();
         final List<CsvRow> rows = new ArrayList<>();
         final List<RowOutcome> outcomes = new ArrayList<>();
+        MoveJournal moveJournal;
     }
 
     private final class DeletionTask implements CancellableOperation, Runnable {
@@ -202,6 +209,12 @@ public final class DeletionEngine implements DeletionApplicationService {
             DeletionContext context = new DeletionContext();
             try {
                 outputPaths = resolveOutputPaths(command.manifest(), command.mode());
+                if (command.mode() == DeletionMode.MOVE_TO_FOLDER) {
+                    validateMoveRoots(command.sourceRoot(), command.destination());
+                    context.moveJournal = new MoveJournal(command.sourceRoot(), command.destination());
+                    initializeJournalSnapshots(context);
+                    moveJournalCodec.write(outputPaths.undoJournal(), context.moveJournal);
+                }
                 notifyProgress(OperationProgress.indeterminate(0, "Avvio operazione Move/Delete"));
                 context.rows.addAll(readManifest(command.manifest()));
                 context.controllate = context.rows.size();
@@ -352,6 +365,12 @@ public final class DeletionEngine implements DeletionApplicationService {
                         }
                         Path relative = sourceRoot.relativize(sourceFile);
                         Path target = targetRoot.resolve(relative).normalize();
+                        if (Files.isSymbolicLink(targetRoot)) {
+                            context.errori++;
+                            return new RowOutcome(ESITO_ERRORE,
+                                    "La cartella di destinazione non può essere un link simbolico: "
+                                            + targetRoot);
+                        }
                         Path targetRootReal = targetRoot.toRealPath();
                         if (!target.startsWith(targetRoot)) {
                             context.errori++;
@@ -360,20 +379,13 @@ public final class DeletionEngine implements DeletionApplicationService {
                         }
                         verifyExistingDestinationPath(targetRoot, target.getParent(), targetRootReal);
                         FileTime fileTimestamp = Files.getLastModifiedTime(sourceFile, LinkOption.NOFOLLOW_LINKS);
+                        long fileSize = Files.size(sourceFile);
+                        String sha256 = MoveUndoEngine.sha256(sourceFile);
                         rememberDirectoryTree(context, sourceRoot, sourceFile.getParent(), targetRoot);
                         Files.createDirectories(target.getParent());
-                        Path uniqueTarget = uniqueDestination(target);
-                        Files.move(sourceFile, uniqueTarget, StandardCopyOption.REPLACE_EXISTING);
+                        Path uniqueTarget = moveWithoutOverwrite(sourceFile, target, fileTimestamp,
+                                fileSize, sha256, context);
                         context.spostati++;
-                        try {
-                            Files.setLastModifiedTime(uniqueTarget, fileTimestamp);
-                        } catch (IOException timestampError) {
-                            String detail = "File spostato in " + uniqueTarget
-                                    + ", ma impossibile ripristinare la data di ultima modifica: "
-                                    + timestampError.getMessage();
-                            context.fileMetadataErrors.add(detail);
-                            return new RowOutcome(ESITO_ERRORE, detail);
-                        }
                         return new RowOutcome(ESITO_SPOSTATO,
                                 "Spostato in: " + uniqueTarget);
                     } catch (IOException exc) {
@@ -544,18 +556,47 @@ public final class DeletionEngine implements DeletionApplicationService {
             };
         }
 
-        private static boolean hasSymbolicLinkComponent(Path root, Path file) {
+        private static void validateMoveRoots(Path sourceRoot, Path destinationRoot) throws IOException {
+            Path source = sourceRoot.toAbsolutePath().normalize();
+            Path destination = destinationRoot.toAbsolutePath().normalize();
+            if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS)
+                    || !Files.isDirectory(destination, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("Root sorgente e destinazione devono essere cartelle esistenti");
+            }
+            BasicFileAttributes sourceAttributes = Files.readAttributes(
+                    source, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            BasicFileAttributes destinationAttributes = Files.readAttributes(
+                    destination, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            if (Files.isSymbolicLink(source) || Files.isSymbolicLink(destination)
+                    || sourceAttributes.isOther() || destinationAttributes.isOther()) {
+                throw new IOException("Root sorgente e destinazione non possono essere link o reparse point");
+            }
+            Path sourceReal = source.toRealPath();
+            Path destinationReal = destination.toRealPath();
+            if (sourceReal.equals(destinationReal)) {
+                throw new IOException("Root sorgente e destinazione non possono coincidere");
+            }
+        }
+
+        private static boolean hasSymbolicLinkComponent(Path root, Path file) throws IOException {
             Path current = root;
-            if (Files.isSymbolicLink(current)) {
+            if (isLinkOrReparsePoint(current)) {
                 return true;
             }
             for (Path segment : root.relativize(file)) {
                 current = current.resolve(segment);
-                if (Files.isSymbolicLink(current)) {
+                if (Files.exists(current, LinkOption.NOFOLLOW_LINKS)
+                        && isLinkOrReparsePoint(current)) {
                     return true;
                 }
             }
             return false;
+        }
+
+        private static boolean isLinkOrReparsePoint(Path path) throws IOException {
+            BasicFileAttributes attributes = Files.readAttributes(
+                    path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            return Files.isSymbolicLink(path) || attributes.isOther();
         }
 
         private static void verifyExistingDestinationPath(Path targetRoot, Path targetParent,
@@ -565,8 +606,8 @@ public final class DeletionEngine implements DeletionApplicationService {
             for (Path segment : relative) {
                 current = current.resolve(segment);
                 if (Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
-                    if (Files.isSymbolicLink(current)) {
-                        throw new IOException("Una cartella di destinazione è un link: " + current);
+                    if (isLinkOrReparsePoint(current)) {
+                        throw new IOException("Una cartella di destinazione è un link o reparse point: " + current);
                     }
                     Path currentReal = current.toRealPath();
                     if (!currentReal.startsWith(targetRootReal)) {
@@ -577,6 +618,29 @@ public final class DeletionEngine implements DeletionApplicationService {
             }
         }
 
+        private void initializeJournalSnapshots(DeletionContext context) throws IOException {
+            Path sourceRoot = command.sourceRoot().toAbsolutePath().normalize();
+            Path manifestParent = command.manifest().toAbsolutePath().normalize().getParent();
+            Path current = manifestParent != null && manifestParent.startsWith(sourceRoot)
+                    ? manifestParent : sourceRoot;
+            while (current != null && current.startsWith(sourceRoot)) {
+                FileTime timestamp = Files.getLastModifiedTime(current, LinkOption.NOFOLLOW_LINKS);
+                context.sourceDirectoryTimes.put(current, timestamp);
+                context.moveJournal.directories().add(new MoveJournal.DirectoryRecord(
+                        MoveJournal.DirectorySide.SOURCE, current, true, timestamp.toString()));
+                if (current.equals(sourceRoot)) break;
+                current = current.getParent();
+            }
+            Path destinationRoot = command.destination().toAbsolutePath().normalize();
+            boolean existed = Files.exists(destinationRoot, LinkOption.NOFOLLOW_LINKS);
+            FileTime timestamp = existed
+                    ? Files.getLastModifiedTime(destinationRoot, LinkOption.NOFOLLOW_LINKS)
+                    : FileTime.fromMillis(0);
+            context.destinationDirectoryTimes.put(destinationRoot, timestamp);
+            context.moveJournal.directories().add(new MoveJournal.DirectoryRecord(
+                    MoveJournal.DirectorySide.DESTINATION, destinationRoot, existed, timestamp.toString()));
+        }
+
         private void rememberDirectoryTree(DeletionContext context, Path sourceRoot,
                                            Path sourceDirectory, Path targetRoot) throws IOException {
             Path current = sourceDirectory;
@@ -585,18 +649,59 @@ public final class DeletionEngine implements DeletionApplicationService {
                 if (timestamp == null) {
                     timestamp = Files.getLastModifiedTime(current, LinkOption.NOFOLLOW_LINKS);
                     context.sourceDirectoryTimes.put(current, timestamp);
+                    context.moveJournal.directories().add(new MoveJournal.DirectoryRecord(
+                            MoveJournal.DirectorySide.SOURCE, current, true, timestamp.toString()));
                 }
                 Path relativeDirectory = sourceRoot.relativize(current);
                 Path destinationDirectory = relativeDirectory.toString().isEmpty()
                         ? targetRoot : targetRoot.resolve(relativeDirectory).normalize();
-                FileTime finalTimestamp = Files.exists(destinationDirectory, LinkOption.NOFOLLOW_LINKS)
+                boolean destinationExisted = Files.exists(destinationDirectory, LinkOption.NOFOLLOW_LINKS);
+                FileTime finalTimestamp = destinationExisted
                         ? Files.getLastModifiedTime(destinationDirectory, LinkOption.NOFOLLOW_LINKS)
                         : timestamp;
-                context.destinationDirectoryTimes.putIfAbsent(destinationDirectory, finalTimestamp);
+                if (!context.destinationDirectoryTimes.containsKey(destinationDirectory)) {
+                    context.destinationDirectoryTimes.put(destinationDirectory, finalTimestamp);
+                    context.moveJournal.directories().add(new MoveJournal.DirectoryRecord(
+                            MoveJournal.DirectorySide.DESTINATION, destinationDirectory,
+                            destinationExisted, finalTimestamp.toString()));
+                }
                 if (current.equals(sourceRoot)) {
                     break;
                 }
                 current = current.getParent();
+            }
+            moveJournalCodec.write(outputPaths.undoJournal(), context.moveJournal);
+        }
+
+        private Path moveWithoutOverwrite(Path source, Path target, FileTime timestamp, long size,
+                                          String sha256, DeletionContext context) throws IOException {
+            for (int sequence = 1; ; sequence++) {
+                Path candidate = destinationCandidate(target, sequence);
+                MoveJournal.FileRecord planned = new MoveJournal.FileRecord(source, candidate,
+                        timestamp.toString(), "", size, sha256, MoveJournal.FileState.PLANNED);
+                context.moveJournal.files().add(planned);
+                int recordIndex = context.moveJournal.files().size() - 1;
+                moveJournalCodec.write(outputPaths.undoJournal(), context.moveJournal);
+                try {
+                    Files.move(source, candidate);
+                    try {
+                        Files.setLastModifiedTime(candidate, timestamp);
+                    } catch (IOException timestampError) {
+                        String detail = "File spostato in " + candidate
+                                + ", ma impossibile ripristinare la data di ultima modifica: "
+                                + timestampError.getMessage();
+                        context.fileMetadataErrors.add(detail);
+                        throw timestampError;
+                    }
+                    String observedTargetMtime = Files.getLastModifiedTime(
+                            candidate, LinkOption.NOFOLLOW_LINKS).toString();
+                    context.moveJournal.files().set(recordIndex, planned.movedAt(observedTargetMtime));
+                    moveJournalCodec.write(outputPaths.undoJournal(), context.moveJournal);
+                    return candidate;
+                } catch (FileAlreadyExistsException exc) {
+                    context.moveJournal.files().remove(recordIndex);
+                    moveJournalCodec.write(outputPaths.undoJournal(), context.moveJournal);
+                }
             }
         }
 
@@ -656,11 +761,17 @@ public final class DeletionEngine implements DeletionApplicationService {
                     String candidateStem = sequence == 1 ? stem : stem + "_" + sequence;
                     Path report = parent.resolve(candidateStem + ".csv").toAbsolutePath().normalize();
                     Path audit = parent.resolve(candidateStem + ".log").toAbsolutePath().normalize();
-                    if (!Files.exists(report) && !Files.exists(audit)
-                            && !RESERVED_OUTPUTS.contains(report) && !RESERVED_OUTPUTS.contains(audit)) {
+                    Path undo = mode == DeletionMode.MOVE_TO_FOLDER
+                            ? parent.resolve(candidateStem + ".undo.csv").toAbsolutePath().normalize() : null;
+                    if (!Files.exists(report) && !Files.exists(audit) && (undo == null || !Files.exists(undo))
+                            && !RESERVED_OUTPUTS.contains(report) && !RESERVED_OUTPUTS.contains(audit)
+                            && (undo == null || !RESERVED_OUTPUTS.contains(undo))) {
                         RESERVED_OUTPUTS.add(report);
                         RESERVED_OUTPUTS.add(audit);
-                        return new OutputPaths(report, audit);
+                        if (undo != null) {
+                            RESERVED_OUTPUTS.add(undo);
+                        }
+                        return new OutputPaths(report, audit, undo);
                     }
                 }
             }
@@ -673,6 +784,9 @@ public final class DeletionEngine implements DeletionApplicationService {
             synchronized (OUTPUT_RESERVATION_LOCK) {
                 RESERVED_OUTPUTS.remove(paths.report());
                 RESERVED_OUTPUTS.remove(paths.audit());
+                if (paths.undoJournal() != null) {
+                    RESERVED_OUTPUTS.remove(paths.undoJournal());
+                }
             }
         }
 
@@ -684,7 +798,7 @@ public final class DeletionEngine implements DeletionApplicationService {
             };
         }
 
-        private record OutputPaths(Path report, Path audit) {
+        private record OutputPaths(Path report, Path audit, Path undoJournal) {
         }
 
         private static void moveAtomically(Path temp, Path target) throws IOException {
@@ -695,20 +809,15 @@ public final class DeletionEngine implements DeletionApplicationService {
             }
         }
 
-        private static Path uniqueDestination(Path target) {
-            if (!Files.exists(target)) {
+        private static Path destinationCandidate(Path target, int sequence) {
+            if (sequence == 1) {
                 return target;
             }
             String name = target.getFileName().toString();
             int dot = name.lastIndexOf('.');
             String stem = dot > 0 ? name.substring(0, dot) : name;
             String ext = dot > 0 ? name.substring(dot) : "";
-            for (int sequence = 2; ; sequence++) {
-                Path candidate = target.resolveSibling(stem + "_" + sequence + ext);
-                if (!Files.exists(candidate)) {
-                    return candidate;
-                }
-            }
+            return target.resolveSibling(stem + "_" + sequence + ext);
         }
 
         private void failed(Instant start, DeletionContext context, Exception exc) {

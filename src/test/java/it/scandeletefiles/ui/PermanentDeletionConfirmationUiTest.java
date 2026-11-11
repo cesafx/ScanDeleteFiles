@@ -13,6 +13,8 @@ import it.scandeletefiles.application.DeletionMode;
 import it.scandeletefiles.application.OperationObserver;
 import it.scandeletefiles.application.PermanentDeletionConfirmation;
 import it.scandeletefiles.application.ScanMetadata;
+import it.scandeletefiles.application.move.MoveUndoApplicationService;
+import it.scandeletefiles.application.move.MoveUndoCommand;
 import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
@@ -177,6 +179,37 @@ class PermanentDeletionConfirmationUiTest {
     }
 
     @Test
+    void ripristinoMoveAccettaSoloIlNuovoRegistroEAvviaIlServizioUndo(@TempDir Path root) throws Exception {
+        ControlledDeletionService deletion = new ControlledDeletionService();
+        ControlledUndoService undo = new ControlledUndoService();
+
+        runOnFxThread(() -> {
+            Scene scene = scene(new DeletionView(deletion, undo,
+                    warning -> PermanentDeletionConfirmation.Result.REJECTED, null));
+            RadioButton restore = (RadioButton) scene.lookup("#undo-move-mode");
+            restore.setSelected(true);
+            assertTrue(sourceRoot(scene).isDisabled());
+            assertTrue(destination(scene).isDisabled());
+            Button action = (Button) scene.lookup("#avvia-cancellazione");
+            TextField input = (TextField) scene.lookup("#deletion-manifest");
+
+            input.setText(root.resolve("moving_precedente.csv").toString());
+            action.fire();
+            assertEquals(0, undo.starts.get());
+
+            Path journal = root.resolve("moving_nuovo.undo.csv");
+            input.setText(journal.toString());
+            assertEquals("Ripristina spostamento", action.getText());
+            action.fire();
+            return null;
+        });
+
+        assertEquals(0, deletion.starts.get());
+        assertEquals(1, undo.starts.get());
+        assertEquals(root.resolve("moving_nuovo.undo.csv"), undo.command.get().journal());
+    }
+
+    @Test
     void permanenteAccettataAvviaUnaVoltaConConfermaIrreversibile(@TempDir Path root) throws Exception {
         ControlledDeletionService service = new ControlledDeletionService();
         AtomicReference<String> shownWarning = new AtomicReference<>();
@@ -274,6 +307,18 @@ class PermanentDeletionConfirmationUiTest {
         FutureTask<T> task = new FutureTask<>(callable);
         Platform.runLater(task);
         return task.get();
+    }
+
+    private static final class ControlledUndoService implements MoveUndoApplicationService {
+        private final AtomicInteger starts = new AtomicInteger();
+        private final AtomicReference<MoveUndoCommand> command = new AtomicReference<>();
+
+        @Override
+        public CancellableOperation start(MoveUndoCommand moveUndoCommand, OperationObserver observer) {
+            starts.incrementAndGet();
+            command.set(moveUndoCommand);
+            return NO_OP;
+        }
     }
 
     private static final class ControlledDeletionService implements DeletionApplicationService {

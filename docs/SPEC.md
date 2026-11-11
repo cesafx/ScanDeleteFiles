@@ -162,6 +162,11 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 113. Come utente, voglio che lo spostamento ricrei nella destinazione l'alberatura relativa alla root della scansione, così da conservare l'organizzazione originale.
 114. Come utente, voglio che la root salvata dalla scansione sia riproposta nella schermata Move/Delete e resti modificabile, così da poter usare CSV prodotti in momenti diversi o correggere disallineamenti.
 115. Come utente, voglio che file spostati e cartelle ricreate conservino le date di ultima modifica originali.
+116. Come utente, voglio che ogni nuovo Move produca un registro di ripristino dedicato, così da poter annullare uno spostamento eseguito per errore.
+117. Come utente, voglio ripristinare i file nei percorsi originali mantenendo le date originali di file e cartelle.
+118. Come utente, voglio che il ripristino non sovrascriva file presenti nel percorso originale e rifiuti file modificati dopo il Move.
+119. Come utente, voglio poter annullare e riprendere un ripristino senza elaborare nuovamente i file già riportati alla posizione originale.
+120. Come utente, voglio che il ripristino elimini soltanto le cartelle create dal Move che sono ancora vuote, senza cancellare contenuti successivi.
 
 ## Implementation Decisions
 
@@ -273,6 +278,12 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 - Se un file con lo stesso nome esiste già nella medesima sottocartella di destinazione, verrà aggiunto un suffisso numerico (_2, _3, ...) per evitare sovrascritture.
 - Lo spostamento non richiederà una schermata riepilogativa né una conferma aggiuntiva.
 - Dopo ogni operazione di spostamento saranno ripristinate le date di ultima modifica delle cartelle sorgenti, delle cartelle ricreate nella destinazione e dei file spostati.
+- Ogni Move produrrà, insieme a report e audit, un registro versionato `moving_<suffisso>.undo.csv`; solo i Move eseguiti da versioni che generano questo registro saranno ripristinabili.
+- La modalità **Ripristina uno spostamento** resterà nella schermata Move/Delete e accetterà esclusivamente il registro `.undo.csv`, non i precedenti report `moving_*.csv`.
+- Il registro conserverà percorso originale, destinazione effettiva, timestamp, dimensione, SHA-256 e snapshot delle cartelle; sarà aggiornato atomicamente dopo ciascun file per consentire annullamento e ripresa.
+- Il ripristino procederà in ordine inverso, senza sovrascrittura, e rifiuterà target mancanti, modificati, non regolari o raggiunti tramite link.
+- Al termine saranno ripristinate le date originali delle cartelle; saranno eliminate soltanto le cartelle create dal Move che risultano ancora vuote.
+- Ogni tentativo di ripristino produrrà report e audit `undoing_<suffisso>.csv/.log`.
 
 ### Annullamento
 

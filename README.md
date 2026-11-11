@@ -98,3 +98,12 @@ italiano per ogni scansione e operazione Move/Delete. La scansione salva inoltre
 un file `.meta.json` affiancato al CSV con la root selezionata: Move/Delete la
 ripropone in un campo modificabile e ricrea nella destinazione l'alberatura
 relativa, preservando le date di file e cartelle.
+
+Ogni nuovo spostamento produce anche un registro `moving_*.undo.csv`. Se lo
+spostamento è stato eseguito per errore, nella schermata **Move/Delete** si può
+selezionare **Ripristina uno spostamento** e indicare quel registro. Il programma
+riporta i file nei percorsi originali, ripristina le date di file e cartelle e
+rimuove solo le cartelle create dallo spostamento rimaste vuote. Per sicurezza
+non sovrascrive file ricreati nel percorso originale e non ripristina file che
+risultano modificati dopo il Move. I report Move prodotti dalle versioni
+precedenti non sono utilizzabili per il ripristino.
