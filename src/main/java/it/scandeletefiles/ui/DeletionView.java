@@ -13,6 +13,7 @@ import it.scandeletefiles.application.OperationProgress;
 import it.scandeletefiles.application.OperationResult;
 import it.scandeletefiles.application.OperationStatus;
 import it.scandeletefiles.application.PermanentDeletionConfirmation;
+import it.scandeletefiles.application.ScanMetadata;
 import it.scandeletefiles.navigation.AppScreen;
 import it.scandeletefiles.platform.PathChooserAdapter;
 import java.io.File;
@@ -48,6 +49,11 @@ public final class DeletionView implements ScreenView {
     private TextField destination;
     private Button chooseDestination;
     private HBox destinationRow;
+    private TextField sourceRoot;
+    private Button chooseSourceRoot;
+    private HBox sourceRootRow;
+    private Parent sourceRootSection;
+    private Parent destinationSection;
     private Button action;
     private Button cancel;
     private Label status;
@@ -96,15 +102,28 @@ public final class DeletionView implements ScreenView {
         moveMode.setToggleGroup(mode);
         moveMode.setSelected(true);
 
+        sourceRoot = new TextField();
+        sourceRoot.setId("move-source-root");
+        sourceRoot.setPromptText("Root originale della scansione");
+        chooseSourceRoot = new Button("Scegli root");
+        chooseSourceRoot.setId("choose-move-source-root");
+        chooseSourceRoot.setOnAction(event -> chooseDirectory(sourceRoot,
+                "Scegli la cartella root originale"));
+        sourceRootRow = fieldRow(sourceRoot, chooseSourceRoot);
+
         destination = new TextField();
         destination.setId("move-destination");
         destination.setPromptText("Cartella di destinazione");
         chooseDestination = new Button("Scegli cartella");
         chooseDestination.setId("choose-move-destination");
-        chooseDestination.setOnAction(event -> chooseDestination());
+        chooseDestination.setOnAction(event -> chooseDirectory(destination,
+                "Scegli la cartella di destinazione"));
         destinationRow = fieldRow(destination, chooseDestination);
+        sourceRootSection = section("Root originale", sourceRootRow);
+        destinationSection = section("Destinazione", destinationRow);
 
-        VBox modes = new VBox(10, moveMode, trashMode, permanentMode, destinationRow);
+        VBox modes = new VBox(10, moveMode, trashMode, permanentMode,
+                sourceRootSection, destinationSection);
         modes.getStyleClass().add("choice-panel");
 
         action = new Button(AppScreen.DELETE.actionLabel());
@@ -124,7 +143,11 @@ public final class DeletionView implements ScreenView {
         status = new Label();
         status.setId("deletion-status");
 
-        manifest.textProperty().addListener((observable, oldValue, newValue) -> validate());
+        manifest.textProperty().addListener((observable, oldValue, newValue) -> {
+            loadSourceRoot(newValue);
+            validate();
+        });
+        sourceRoot.textProperty().addListener((observable, oldValue, newValue) -> validate());
         destination.textProperty().addListener((observable, oldValue, newValue) -> validate());
         mode.selectedToggleProperty().addListener((observable, oldValue, newValue) -> {
             updateDestinationState();
@@ -154,7 +177,7 @@ public final class DeletionView implements ScreenView {
     private void validate() {
         boolean ready = !manifest.getText().isBlank();
         if (ready && moveMode.isSelected()) {
-            ready = !destination.getText().isBlank();
+            ready = !sourceRoot.getText().isBlank() && !destination.getText().isBlank();
         }
         action.setDisable(operationRunning || !ready);
     }
@@ -163,8 +186,12 @@ public final class DeletionView implements ScreenView {
         boolean enabled = moveMode.isSelected() && !operationRunning;
         destination.setDisable(!enabled);
         chooseDestination.setDisable(!enabled);
-        destinationRow.setVisible(moveMode.isSelected());
-        destinationRow.setManaged(moveMode.isSelected());
+        sourceRoot.setDisable(!enabled);
+        chooseSourceRoot.setDisable(!enabled);
+        sourceRootSection.setVisible(moveMode.isSelected());
+        sourceRootSection.setManaged(moveMode.isSelected());
+        destinationSection.setVisible(moveMode.isSelected());
+        destinationSection.setManaged(moveMode.isSelected());
     }
 
     private void updateOperationControls() {
@@ -173,27 +200,38 @@ public final class DeletionView implements ScreenView {
         trashMode.setDisable(operationRunning);
         permanentMode.setDisable(operationRunning);
         moveMode.setDisable(operationRunning);
+        sourceRoot.setDisable(operationRunning || !moveMode.isSelected());
+        chooseSourceRoot.setDisable(operationRunning || !moveMode.isSelected());
         updateDestinationState();
         validate();
     }
 
-    private void chooseDestination() {
-        String currentValue = destination.getText().trim();
+    private void loadSourceRoot(String csvValue) {
+        sourceRoot.clear();
+        Path csv = ViewSupport.pathOrNull(csvValue);
+        if (csv == null) {
+            return;
+        }
+        ScanMetadata.readRoot(csv).ifPresent(root -> sourceRoot.setText(root.toString()));
+    }
+
+    private void chooseDirectory(TextField field, String title) {
+        String currentValue = field.getText().trim();
         Path proposed = ViewSupport.pathOrNull(currentValue);
         if (pathChooser != null) {
             pathChooser.chooseDirectory(proposed)
-                    .ifPresent(selected -> destination.setText(selected.toString()));
+                    .ifPresent(selected -> field.setText(selected.toString()));
             return;
         }
         DirectoryChooser chooser = new DirectoryChooser();
-        chooser.setTitle("Scegli la cartella di destinazione");
+        chooser.setTitle(title);
         if (proposed != null && proposed.toFile().isDirectory()) {
             chooser.setInitialDirectory(proposed.toFile());
         }
-        Window owner = chooseDestination.getScene() == null ? null : chooseDestination.getScene().getWindow();
+        Window owner = field.getScene() == null ? null : field.getScene().getWindow();
         File selected = chooser.showDialog(owner);
         if (selected != null) {
-            destination.setText(selected.toPath().toString());
+            field.setText(selected.toPath().toString());
         }
     }
 
@@ -201,6 +239,7 @@ public final class DeletionView implements ScreenView {
         DeletionMode mode;
         boolean confirmed = false;
         Path destinationPath = null;
+        Path sourceRootPath = null;
         if (trashMode.isSelected()) {
             mode = DeletionMode.TRASH;
         } else if (permanentMode.isSelected()) {
@@ -213,6 +252,11 @@ public final class DeletionView implements ScreenView {
             }
         } else {
             mode = DeletionMode.MOVE_TO_FOLDER;
+            sourceRootPath = ViewSupport.pathOrNull(sourceRoot.getText().trim());
+            if (sourceRootPath == null) {
+                status.setText("Root originale non valida: controlla il percorso digitato");
+                return;
+            }
             destinationPath = ViewSupport.pathOrNull(destination.getText().trim());
             if (destinationPath == null) {
                 status.setText("Cartella di destinazione non valida: controlla il percorso digitato");
@@ -225,7 +269,7 @@ public final class DeletionView implements ScreenView {
             return;
         }
         DeletionCommand command = new DeletionCommand(
-                manifestPath, mode, confirmed, destinationPath);
+                manifestPath, mode, confirmed, destinationPath, sourceRootPath);
 
         currentOperation = null;
         operationRunning = true;

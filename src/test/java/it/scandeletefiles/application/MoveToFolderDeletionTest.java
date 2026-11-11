@@ -270,6 +270,65 @@ class MoveToFolderDeletionTest {
     }
 
     @Test
+    void spostaMantenendoAlberaturaDellaRootETimestamp(@TempDir Path root) throws Exception {
+        Path sourceRoot = Files.createDirectory(root.resolve("archivio"));
+        Path clienti = Files.createDirectory(sourceRoot.resolve("clienti"));
+        Path rossi = Files.createDirectory(clienti.resolve("rossi"));
+        Path destination = Files.createDirectory(root.resolve("destinazione"));
+        Path destinationClienti = Files.createDirectory(destination.resolve("clienti"));
+        Path file = rossi.resolve("documento.txt");
+        Files.writeString(file, "contenuto");
+
+        FileTime fileTime = FileTime.from(Instant.parse("2025-01-02T03:04:05Z"));
+        FileTime rootTime = FileTime.from(Instant.parse("2024-01-02T03:04:05Z"));
+        FileTime clientiTime = FileTime.from(Instant.parse("2024-02-03T04:05:06Z"));
+        FileTime rossiTime = FileTime.from(Instant.parse("2024-03-04T05:06:07Z"));
+        FileTime destinationClientiTime = FileTime.from(Instant.parse("2023-04-05T06:07:08Z"));
+        FileTime destinationRootTime = FileTime.from(Instant.parse("2023-01-02T03:04:05Z"));
+        Files.setLastModifiedTime(file, fileTime);
+        Files.setLastModifiedTime(sourceRoot, rootTime);
+        Files.setLastModifiedTime(clienti, clientiTime);
+        Files.setLastModifiedTime(rossi, rossiTime);
+        Files.setLastModifiedTime(destinationClienti, destinationClientiTime);
+        Files.setLastModifiedTime(destination, destinationRootTime);
+
+        Path inputCsv = root.resolve("elenco.csv");
+        Files.writeString(inputCsv, "\uFEFF"
+                + "Nome file;Path cartella;Path completo;Formato file;Data ultima modifica;Delete\n"
+                + "documento.txt;" + rossi + ";" + file + ";TXT;2025/01/02;Yes\n",
+                StandardCharsets.UTF_8);
+
+        DeletionEngine engine = new DeletionEngine(platform().trash(), platform().clock());
+        CountDownLatch finished = new CountDownLatch(1);
+        AtomicReference<OperationResult> result = new AtomicReference<>();
+        engine.start(new DeletionCommand(inputCsv, DeletionMode.MOVE_TO_FOLDER, false,
+                        destination, sourceRoot),
+                new OperationObserver() {
+                    @Override
+                    public void onProgress(OperationProgress progress) {
+                    }
+
+                    @Override
+                    public void onFinished(OperationResult operationResult) {
+                        result.set(operationResult);
+                        finished.countDown();
+                    }
+                });
+
+        assertTrue(finished.await(30, TimeUnit.SECONDS));
+        assertEquals(OperationStatus.COMPLETED, result.get().status());
+        Path moved = destination.resolve("clienti/rossi/documento.txt");
+        assertTrue(Files.exists(moved));
+        assertEquals(fileTime, Files.getLastModifiedTime(moved));
+        assertEquals(rootTime, Files.getLastModifiedTime(sourceRoot));
+        assertEquals(clientiTime, Files.getLastModifiedTime(clienti));
+        assertEquals(rossiTime, Files.getLastModifiedTime(rossi));
+        assertEquals(destinationRootTime, Files.getLastModifiedTime(destination));
+        assertEquals(destinationClientiTime, Files.getLastModifiedTime(destination.resolve("clienti")));
+        assertEquals(rossiTime, Files.getLastModifiedTime(destination.resolve("clienti/rossi")));
+    }
+
+    @Test
     void comandoSenzaDestinazioneInModalitaSpostaVieneRifiutato() {
         assertThrows(NullPointerException.class,
                 () -> new DeletionCommand(rootPath("manifest.csv"), DeletionMode.MOVE_TO_FOLDER, false, null));

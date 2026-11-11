@@ -22,6 +22,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,10 +36,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Esegue l'operazione di cancellazione a partire dal solo manifest CSV selezionato
  * dall'utente. {@code Path completo} della riga è il riferimento autorevole per il
- * file da trattare. Le righe marcate {@code Yes} (case-insensitive) vengono spostate
- * nel cestino tramite l'adattatore di piattaforma; {@code No} e il valore vuoto
- * saltano la riga; qualsiasi altro valore è un errore. Nessun sidecar e nessuno stato
- * di scansione è richiesto: il CSV è l'unico input.
+ * file da trattare. In modalità Move la root è fornita esplicitamente dal comando
+ * (precompilata dai metadati di scansione ma modificabile dall'utente) e serve solo
+ * a ricostruire il percorso relativo nella destinazione. Le righe marcate
+ * {@code Yes} (case-insensitive) vengono elaborate; {@code No} e il valore vuoto
+ * saltano la riga; qualsiasi altro valore è un errore.
  *
  * <p>L'operazione gira su un thread in background, segnala avanzamento e rispetta
  * l'annullamento cooperativo: le righe già elaborate conservano il loro esito, le
@@ -177,6 +179,8 @@ public final class DeletionEngine implements DeletionApplicationService {
         int errori;
         final Map<String, Integer> perFormat = new TreeMap<>();
         final Map<Path, FileTime> sourceDirectoryTimes = new LinkedHashMap<>();
+        final Map<Path, FileTime> destinationDirectoryTimes = new LinkedHashMap<>();
+        final List<String> fileMetadataErrors = new ArrayList<>();
         final List<CsvRow> rows = new ArrayList<>();
         final List<RowOutcome> outcomes = new ArrayList<>();
     }
@@ -227,7 +231,8 @@ public final class DeletionEngine implements DeletionApplicationService {
                         ? "Annullata dall'utente prima del completamento" : null;
                 writeReport(command.manifest(), context.rows, context.outcomes);
                 writeAudit(command.manifest(), status, start, clock.instant(), context, note);
-                List<String> metadataErrors = restoreSourceDirectoryTimes(context);
+                List<String> metadataErrors = new ArrayList<>(context.fileMetadataErrors);
+                metadataErrors.addAll(restoreSourceDirectoryTimes(context));
                 if (!metadataErrors.isEmpty()) {
                     context.errori += metadataErrors.size();
                     status = OperationStatus.FAILED;
@@ -331,24 +336,51 @@ public final class DeletionEngine implements DeletionApplicationService {
                     }
                 }
                 case MOVE_TO_FOLDER -> {
-                    Path targetDir = command.destination();
-                    Path target = targetDir.resolve(file.getFileName());
-                    Path uniqueTarget = uniqueDestination(target);
-                    Path sourceDirectory = file.getParent();
+                    Path sourceRoot = command.sourceRoot().toAbsolutePath().normalize();
+                    Path sourceFile = file.toAbsolutePath().normalize();
+                    Path targetRoot = command.destination().toAbsolutePath().normalize();
                     try {
-                        if (sourceDirectory != null && !context.sourceDirectoryTimes.containsKey(sourceDirectory)) {
-                            context.sourceDirectoryTimes.put(sourceDirectory,
-                                    Files.getLastModifiedTime(sourceDirectory, LinkOption.NOFOLLOW_LINKS));
+                        Path sourceRootReal = sourceRoot.toRealPath();
+                        Path sourceReal = sourceFile.toRealPath();
+                        if (!sourceFile.startsWith(sourceRoot) || sourceFile.equals(sourceRoot)
+                                || !sourceReal.startsWith(sourceRootReal)
+                                || hasSymbolicLinkComponent(sourceRoot, sourceFile)) {
+                            context.errori++;
+                            return new RowOutcome(ESITO_ERRORE,
+                                    "File esterno alla cartella root selezionata o raggiunto tramite link: "
+                                            + sourceFile);
                         }
-                        Files.move(file, uniqueTarget, StandardCopyOption.REPLACE_EXISTING);
+                        Path relative = sourceRoot.relativize(sourceFile);
+                        Path target = targetRoot.resolve(relative).normalize();
+                        Path targetRootReal = targetRoot.toRealPath();
+                        if (!target.startsWith(targetRoot)) {
+                            context.errori++;
+                            return new RowOutcome(ESITO_ERRORE,
+                                    "Percorso di destinazione non valido: " + target);
+                        }
+                        verifyExistingDestinationPath(targetRoot, target.getParent(), targetRootReal);
+                        FileTime fileTimestamp = Files.getLastModifiedTime(sourceFile, LinkOption.NOFOLLOW_LINKS);
+                        rememberDirectoryTree(context, sourceRoot, sourceFile.getParent(), targetRoot);
+                        Files.createDirectories(target.getParent());
+                        Path uniqueTarget = uniqueDestination(target);
+                        Files.move(sourceFile, uniqueTarget, StandardCopyOption.REPLACE_EXISTING);
+                        context.spostati++;
+                        try {
+                            Files.setLastModifiedTime(uniqueTarget, fileTimestamp);
+                        } catch (IOException timestampError) {
+                            String detail = "File spostato in " + uniqueTarget
+                                    + ", ma impossibile ripristinare la data di ultima modifica: "
+                                    + timestampError.getMessage();
+                            context.fileMetadataErrors.add(detail);
+                            return new RowOutcome(ESITO_ERRORE, detail);
+                        }
+                        return new RowOutcome(ESITO_SPOSTATO,
+                                "Spostato in: " + uniqueTarget);
                     } catch (IOException exc) {
                         context.errori++;
                         return new RowOutcome(ESITO_ERRORE,
                                 "Impossibile spostare il file: " + exc.getMessage());
                     }
-                    context.spostati++;
-                    return new RowOutcome(ESITO_SPOSTATO,
-                            "Spostato in: " + uniqueTarget);
                 }
                 default -> {
                     context.errori++;
@@ -512,17 +544,82 @@ public final class DeletionEngine implements DeletionApplicationService {
             };
         }
 
-        private List<String> restoreSourceDirectoryTimes(DeletionContext context) {
-            List<String> errors = new ArrayList<>();
-            for (Map.Entry<Path, FileTime> entry : context.sourceDirectoryTimes.entrySet()) {
-                try {
-                    directoryTimeRestorer.restore(entry.getKey(), entry.getValue());
-                } catch (IOException exc) {
-                    errors.add("Impossibile ripristinare la data della cartella sorgente "
-                            + entry.getKey() + ": " + exc.getMessage());
+        private static boolean hasSymbolicLinkComponent(Path root, Path file) {
+            Path current = root;
+            if (Files.isSymbolicLink(current)) {
+                return true;
+            }
+            for (Path segment : root.relativize(file)) {
+                current = current.resolve(segment);
+                if (Files.isSymbolicLink(current)) {
+                    return true;
                 }
             }
+            return false;
+        }
+
+        private static void verifyExistingDestinationPath(Path targetRoot, Path targetParent,
+                                                          Path targetRootReal) throws IOException {
+            Path current = targetRoot;
+            Path relative = targetRoot.relativize(targetParent);
+            for (Path segment : relative) {
+                current = current.resolve(segment);
+                if (Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+                    if (Files.isSymbolicLink(current)) {
+                        throw new IOException("Una cartella di destinazione è un link: " + current);
+                    }
+                    Path currentReal = current.toRealPath();
+                    if (!currentReal.startsWith(targetRootReal)) {
+                        throw new IOException("Una cartella di destinazione attraversa un link esterno: "
+                                + current);
+                    }
+                }
+            }
+        }
+
+        private void rememberDirectoryTree(DeletionContext context, Path sourceRoot,
+                                           Path sourceDirectory, Path targetRoot) throws IOException {
+            Path current = sourceDirectory;
+            while (current != null && current.startsWith(sourceRoot)) {
+                FileTime timestamp = context.sourceDirectoryTimes.get(current);
+                if (timestamp == null) {
+                    timestamp = Files.getLastModifiedTime(current, LinkOption.NOFOLLOW_LINKS);
+                    context.sourceDirectoryTimes.put(current, timestamp);
+                }
+                Path relativeDirectory = sourceRoot.relativize(current);
+                Path destinationDirectory = relativeDirectory.toString().isEmpty()
+                        ? targetRoot : targetRoot.resolve(relativeDirectory).normalize();
+                FileTime finalTimestamp = Files.exists(destinationDirectory, LinkOption.NOFOLLOW_LINKS)
+                        ? Files.getLastModifiedTime(destinationDirectory, LinkOption.NOFOLLOW_LINKS)
+                        : timestamp;
+                context.destinationDirectoryTimes.putIfAbsent(destinationDirectory, finalTimestamp);
+                if (current.equals(sourceRoot)) {
+                    break;
+                }
+                current = current.getParent();
+            }
+        }
+
+        private List<String> restoreSourceDirectoryTimes(DeletionContext context) {
+            List<String> errors = new ArrayList<>();
+            restoreDirectoryTimes(context.destinationDirectoryTimes, "di destinazione", errors);
+            restoreDirectoryTimes(context.sourceDirectoryTimes, "sorgente", errors);
             return errors;
+        }
+
+        private void restoreDirectoryTimes(Map<Path, FileTime> timestamps, String kind,
+                                           List<String> errors) {
+            timestamps.entrySet().stream()
+                    .sorted(Map.Entry.<Path, FileTime>comparingByKey(
+                            Comparator.comparingInt(Path::getNameCount).reversed()))
+                    .forEach(entry -> {
+                        try {
+                            directoryTimeRestorer.restore(entry.getKey(), entry.getValue());
+                        } catch (IOException exc) {
+                            errors.add("Impossibile ripristinare la data della cartella " + kind + " "
+                                    + entry.getKey() + ": " + exc.getMessage());
+                        }
+                    });
         }
 
         private static String appendNote(String note, String addition) {

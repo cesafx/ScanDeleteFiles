@@ -159,6 +159,9 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 110. Come utente, voglio che la seconda schermata si chiami **Move/Delete**, che lo spostamento sia predefinito e che la destinazione sia richiesta solo per tale modalità.
 111. Come utente, voglio selezionare una cartella, non un file, come destinazione dello spostamento.
 112. Come utente, voglio che lo spostamento dei file non alteri la data di ultima modifica delle cartelle sorgenti, così da preservarne i metadati.
+113. Come utente, voglio che lo spostamento ricrei nella destinazione l'alberatura relativa alla root della scansione, così da conservare l'organizzazione originale.
+114. Come utente, voglio che la root salvata dalla scansione sia riproposta nella schermata Move/Delete e resti modificabile, così da poter usare CSV prodotti in momenti diversi o correggere disallineamenti.
+115. Come utente, voglio che file spostati e cartelle ricreate conservino le date di ultima modifica originali.
 
 ## Implementation Decisions
 
@@ -264,14 +267,17 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 - L’integrazione con il cestino sarà isolata dietro un seam di piattaforma, così da distinguere capacità disponibile, successo e fallimento senza vincolare le regole applicative a una specifica implementazione nativa.
 - La destinazione sarà selezionata con un selettore di cartelle e i relativi controlli saranno attivi e visibili solo quando è selezionata la modalità di spostamento.
 - Cestino e cancellazione definitiva non richiederanno né attiveranno il campo della cartella di destinazione.
-- Se un file con lo stesso nome esiste già nella cartella di destinazione, verrà aggiunto un suffisso numerico (_2, _3, ...) per evitare sovrascritture.
+- La scansione produrrà accanto al CSV un file `<nome>.meta.json` con la root selezionata, senza aggiungere colonne tecniche al CSV.
+- Selezionando un CSV, la schermata Move/Delete proporrà la root letta dai metadati; per compatibilità con file precedenti userà il log di scansione come fallback. Il campo resterà sempre modificabile.
+- Lo spostamento ricostruirà sotto la destinazione il percorso relativo alla root selezionata; i file esterni alla root saranno segnalati come errori e non spostati.
+- Se un file con lo stesso nome esiste già nella medesima sottocartella di destinazione, verrà aggiunto un suffisso numerico (_2, _3, ...) per evitare sovrascritture.
 - Lo spostamento non richiederà una schermata riepilogativa né una conferma aggiuntiva.
-- Dopo ogni operazione di spostamento saranno ripristinate le date di ultima modifica delle cartelle sorgenti, anche quando report e log vengono scritti nella stessa cartella.
+- Dopo ogni operazione di spostamento saranno ripristinate le date di ultima modifica delle cartelle sorgenti, delle cartelle ricreate nella destinazione e dei file spostati.
 
 ### Annullamento
 
 - La richiesta di annullamento sarà cooperativa e impedirà l’avvio di nuove unità di lavoro appena il servizio la rileva.
-- Una scansione annullata non produrrà un manifest parziale al percorso finale.
+- Una scansione annullata produrrà il CSV con i dati parziali raccolti fino all'annullamento, i metadati associati e il log di audit.
 - Una cancellazione annullata non annullerà retroattivamente le operazioni già completate.
 - Una cancellazione annullata produrrà il report relativo alle righe elaborate.
 - Audit e stato finale dovranno rendere esplicito l’annullamento.
@@ -398,7 +404,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 - Ricerca per contenuto, dimensione, proprietario o altri metadati non specificati.
 - Formati di manifest diversi dal CSV definito.
 - Colonne tecniche aggiuntive nel manifest.
-- Sidecar tecnici necessari alla cancellazione.
+- Sidecar tecnici diversi dal file metadati della scansione usato per proporre la root; l'utente può sempre correggere manualmente la root.
 - Identificazione crittografica o tramite hash dei file.
 - Rilevamento affidabile di modifiche o sostituzioni avvenute nello stesso giorno della data registrata.
 - Fallback automatico dal cestino alla cancellazione permanente.

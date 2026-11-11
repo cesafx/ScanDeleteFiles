@@ -12,6 +12,7 @@ import it.scandeletefiles.application.DeletionCommand;
 import it.scandeletefiles.application.DeletionMode;
 import it.scandeletefiles.application.OperationObserver;
 import it.scandeletefiles.application.PermanentDeletionConfirmation;
+import it.scandeletefiles.application.ScanMetadata;
 import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
@@ -62,6 +63,7 @@ class PermanentDeletionConfirmationUiTest {
                 confirmations.incrementAndGet();
                 return PermanentDeletionConfirmation.Result.CONFIRMED;
             }));
+            sourceRoot(scene).setText(root.toString());
             destination(scene).setText(root.resolve("destinazione").toString());
             start(scene, root.resolve("manifest.csv"));
             return null;
@@ -71,6 +73,7 @@ class PermanentDeletionConfirmationUiTest {
         assertEquals(1, service.starts.get());
         assertEquals(DeletionMode.MOVE_TO_FOLDER, service.command.get().mode());
         assertEquals(root.resolve("destinazione"), service.command.get().destination());
+        assertEquals(root, service.command.get().sourceRoot());
         assertFalse(service.command.get().permanentDeletionConfirmed());
     }
 
@@ -84,22 +87,32 @@ class PermanentDeletionConfirmationUiTest {
             RadioButton permanent = (RadioButton) scene.lookup("#permanent-deletion-mode");
             TextField destination = destination(scene);
             Button chooser = (Button) scene.lookup("#choose-move-destination");
+            TextField sourceRoot = sourceRoot(scene);
+            Button rootChooser = (Button) scene.lookup("#choose-move-source-root");
 
             assertTrue(move.isSelected());
             assertFalse(destination.isDisabled());
             assertFalse(chooser.isDisabled());
+            assertFalse(sourceRoot.isDisabled());
+            assertFalse(rootChooser.isDisabled());
 
             trash.setSelected(true);
             assertTrue(destination.isDisabled());
             assertTrue(chooser.isDisabled());
+            assertTrue(sourceRoot.isDisabled());
+            assertTrue(rootChooser.isDisabled());
 
             permanent.setSelected(true);
             assertTrue(destination.isDisabled());
             assertTrue(chooser.isDisabled());
+            assertTrue(sourceRoot.isDisabled());
+            assertTrue(rootChooser.isDisabled());
 
             move.setSelected(true);
             assertFalse(destination.isDisabled());
             assertFalse(chooser.isDisabled());
+            assertFalse(sourceRoot.isDisabled());
+            assertFalse(rootChooser.isDisabled());
             return null;
         });
     }
@@ -111,6 +124,7 @@ class PermanentDeletionConfirmationUiTest {
         runOnFxThread(() -> {
             Scene scene = scene(new DeletionView(service,
                     warning -> PermanentDeletionConfirmation.Result.REJECTED));
+            sourceRoot(scene).setText(root.toString());
             destination(scene).setText(root.resolve("destinazione").toString());
             start(scene, root.resolve("elenco.csv"));
 
@@ -129,6 +143,37 @@ class PermanentDeletionConfirmationUiTest {
         });
 
         assertEquals(1, service.starts.get());
+    }
+
+    @Test
+    void rootVienePropostaDaiMetadatiERestaModificabile(@TempDir Path root) throws Exception {
+        ControlledDeletionService service = new ControlledDeletionService();
+        Path csv = root.resolve("scansione.csv");
+        Path rootRegistrata = root.resolve("archivio-originale");
+        Path rootCorretta = root.resolve("archivio-corretto");
+        ScanMetadata.write(csv, rootRegistrata);
+
+        runOnFxThread(() -> {
+            Scene scene = scene(new DeletionView(service,
+                    warning -> PermanentDeletionConfirmation.Result.REJECTED));
+            TextField csvField = (TextField) scene.lookup("#deletion-manifest");
+            csvField.setText(csv.toString());
+            assertEquals(rootRegistrata.toAbsolutePath().normalize().toString(),
+                    sourceRoot(scene).getText());
+
+            Path csvSenzaMetadati = root.resolve("vecchio.csv");
+            csvField.setText(csvSenzaMetadati.toString());
+            assertTrue(sourceRoot(scene).getText().isBlank(),
+                    "cambiando CSV non deve restare la root del file precedente");
+            sourceRoot(scene).setText(rootCorretta.toString());
+            destination(scene).setText(root.resolve("destinazione").toString());
+            Button action = (Button) scene.lookup("#avvia-cancellazione");
+            assertFalse(action.isDisabled());
+            action.fire();
+            return null;
+        });
+
+        assertEquals(rootCorretta, service.command.get().sourceRoot());
     }
 
     @Test
@@ -203,10 +248,20 @@ class PermanentDeletionConfirmationUiTest {
         TextField manifestField = (TextField) scene.lookup("#deletion-manifest");
         assertNotNull(manifestField);
         manifestField.setText(manifest.toString());
+        RadioButton move = (RadioButton) scene.lookup("#move-deletion-mode");
+        if (move != null && move.isSelected() && sourceRoot(scene).getText().isBlank()) {
+            sourceRoot(scene).setText(manifest.getParent().toString());
+        }
         Button action = (Button) scene.lookup("#avvia-cancellazione");
         assertNotNull(action);
         assertFalse(action.isDisabled());
         action.fire();
+    }
+
+    private static TextField sourceRoot(Scene scene) {
+        TextField sourceRoot = (TextField) scene.lookup("#move-source-root");
+        assertNotNull(sourceRoot);
+        return sourceRoot;
     }
 
     private static TextField destination(Scene scene) {

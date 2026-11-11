@@ -8,6 +8,7 @@ import it.scandeletefiles.application.OperationStatus;
 import it.scandeletefiles.application.csv.CsvFormat;
 import it.scandeletefiles.application.ScanApplicationService;
 import it.scandeletefiles.application.ScanCommand;
+import it.scandeletefiles.application.ScanMetadata;
 import it.scandeletefiles.bootstrap.PlatformAdapters;
 
 import java.io.BufferedWriter;
@@ -212,6 +213,7 @@ public final class ScanEngine implements ScanApplicationService {
                     .sorted(Comparator.comparing(CsvRow::fullPath))
                     .collect(Collectors.toUnmodifiableList());
             Path manifest = writeCsv(command.manifestDestination(), rows);
+            ScanMetadata.write(manifest, command.root());
             notifyProgress(OperationProgress.indeterminate(context.visited,
                     "Scrittura log di audit in corso..."));
             writeAudit(manifest, OperationStatus.COMPLETED, start, end, context, null, null);
@@ -226,6 +228,7 @@ public final class ScanEngine implements ScanApplicationService {
                         .sorted(Comparator.comparing(CsvRow::fullPath))
                         .collect(Collectors.toUnmodifiableList());
                 Path manifest = writeCsv(command.manifestDestination(), rows);
+                ScanMetadata.write(manifest, command.root());
                 // Scrivi l'audit accanto al CSV effettivamente pubblicato
                 writeAudit(manifest, OperationStatus.CANCELLED, start, end, context,
                         "Annullata dall'utente prima del completamento", null);
@@ -274,7 +277,8 @@ public final class ScanEngine implements ScanApplicationService {
             }
             for (int sequence = 1; ; sequence++) {
                 Path candidate = uniqueName(requestedManifest, sequence);
-                if (Files.exists(candidate) || Files.exists(auditPath(candidate))) {
+                if (Files.exists(candidate) || Files.exists(auditPath(candidate))
+                        || Files.exists(ScanMetadata.pathFor(candidate))) {
                     continue;
                 }
                 try {

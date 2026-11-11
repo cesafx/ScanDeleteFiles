@@ -10,6 +10,7 @@ import it.scandeletefiles.application.OperationProgress;
 import it.scandeletefiles.application.OperationResult;
 import it.scandeletefiles.application.OperationStatus;
 import it.scandeletefiles.application.ScanCommand;
+import it.scandeletefiles.application.ScanMetadata;
 import it.scandeletefiles.bootstrap.PlatformAdapters;
 import it.scandeletefiles.platform.SettingsAdapter;
 import it.scandeletefiles.platform.TrashResult;
@@ -91,6 +92,9 @@ class ScanAuditLogTest {
         engine.start(command, observer);
         assertTrue(finished.await(30, TimeUnit.SECONDS), "la scansione non è terminata");
         assertEquals(OperationStatus.COMPLETED, result.get().status());
+        assertTrue(Files.exists(ScanMetadata.pathFor(manifest)),
+                "la scansione deve produrre i metadati affiancati al CSV");
+        assertEquals(root.toAbsolutePath().normalize(), ScanMetadata.readRoot(manifest).orElseThrow());
 
         Path audit = root.resolve("esito.csv.log");
         assertTrue(Files.exists(audit), "il log di audit deve essere scritto accanto al manifest");

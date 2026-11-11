@@ -94,4 +94,7 @@ virgola, con sei colonne (`Nome file`, `Path cartella`, `Path completo`,
 `Formato file`, `Data ultima modifica`, `Delete`) inizializzate a `Delete=Yes`.
 Il CSV finale dell'operazione aggiunge le colonne `Esito` e `Dettaglio` e viene
 salvato accanto al CSV di input. L'audit log (`.log`) viene prodotto in
-italiano per ogni scansione e operazione Move/Delete.
+italiano per ogni scansione e operazione Move/Delete. La scansione salva inoltre
+un file `.meta.json` affiancato al CSV con la root selezionata: Move/Delete la
+ripropone in un campo modificabile e ricrea nella destinazione l'alberatura
+relativa, preservando le date di file e cartelle.
