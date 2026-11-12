@@ -130,6 +130,22 @@
                                 </configuration>
                             </execution>
                             <execution>
+                                <id>generate-test-dataset</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>${java.home}/bin/java.exe</executable>
+                                    <arguments>
+                                        <argument>-cp</argument>
+                                        <argument>${project.build.outputDirectory}</argument>
+                                        <argument>it.scandeletefiles.tools.TestDatasetGenerator</argument>
+                                        <argument>${project.build.directory}/package/ScanDeleteFiles</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                            <execution>
                                 <id>zip-portable-distribution</id>
                                 <phase>package</phase>
                                 <goals>

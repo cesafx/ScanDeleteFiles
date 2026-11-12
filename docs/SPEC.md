@@ -167,6 +167,7 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 118. Come utente, voglio che il ripristino non sovrascriva file presenti nel percorso originale e rifiuti file modificati dopo il Move.
 119. Come utente, voglio poter annullare e riprendere un ripristino senza elaborare nuovamente i file già riportati alla posizione originale.
 120. Come utente, voglio che il ripristino elimini soltanto le cartelle create dal Move che sono ancora vuote, senza cancellare contenuti successivi.
+121. Come collaudatore, voglio che ogni pacchetto Windows contenga un dataset deterministico di circa mille documenti, con formati, date e alberatura vari, così da poter provare scansione, Move e ripristino senza preparare dati manualmente.
 
 ## Implementation Decisions
 
@@ -180,6 +181,9 @@ Entrambe le operazioni mostreranno l’avanzamento e potranno essere annullate.
 - La distribuzione Windows sarà un **app-image prodotto con `jpackage`**, comprensivo di runtime Java.
 - L’app-image sarà distribuito come archivio ZIP portabile.
 - Il codice sorgente sarà mantenuto in un repository GitHub privato.
+
+- Il pacchetto portabile Windows includerà sempre `CartellaCollaudo_Sorgente` con esattamente 1000 file segnaposto, almeno 30 estensioni, date distribuite dal 2018 al 2026 e almeno 100 sottocartelle, oltre a una destinazione e una guida di collaudo.
+- Il dataset sarà generato deterministicamente durante il packaging e verificato dalla pipeline prima della pubblicazione dello ZIP.
 
 ### Struttura funzionale
 

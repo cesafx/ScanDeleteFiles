@@ -73,12 +73,39 @@ jobs:
           if (-not $appDirectory) { throw "Directory applicativa assente dallo ZIP" }
 
           $forbidden = Get-ChildItem $extract -File -Recurse | Where-Object {
-            $_.Extension -in ".java", ".csv", ".log" -or
-            $_.Name -in "preferences.json", "src.zip", "javac.exe", "javadoc.exe", "jdb.exe", "jlink.exe", "jpackage.exe" -or
-            $_.FullName -match "[\\/](include|man)[\\/]"
+            $inTestData = $_.FullName -match "[\\/]CartellaCollaudo_(Sorgente|Destinazione)[\\/]"
+            -not $inTestData -and (
+              $_.Extension -in ".java", ".csv", ".log" -or
+              $_.Name -in "preferences.json", "src.zip", "javac.exe", "javadoc.exe", "jdb.exe", "jlink.exe", "jpackage.exe" -or
+              $_.FullName -match "[\\/](include|man)[\\/]"
+            )
           }
           if ($forbidden) {
             throw "Lo ZIP contiene file vietati: $($forbidden.FullName -join ', ')"
+          }
+
+          $testSource = Get-ChildItem $extract -Directory -Recurse |
+            Where-Object { $_.Name -eq "CartellaCollaudo_Sorgente" } |
+            Select-Object -First 1
+          $testDestination = Get-ChildItem $extract -Directory -Recurse |
+            Where-Object { $_.Name -eq "CartellaCollaudo_Destinazione" } |
+            Select-Object -First 1
+          $testGuide = Get-ChildItem $extract -File -Recurse |
+            Where-Object { $_.Name -eq "LEGGIMI_COLLAUDO.txt" } |
+            Select-Object -First 1
+          if (-not $testSource -or -not $testDestination -or -not $testGuide) {
+            throw "Cartelle o guida di collaudo assenti dallo ZIP"
+          }
+          $testFiles = @(Get-ChildItem $testSource.FullName -File -Recurse)
+          $testDirectories = @(Get-ChildItem $testSource.FullName -Directory -Recurse)
+          $testExtensions = @($testFiles | ForEach-Object { $_.Extension.ToLowerInvariant() } | Sort-Object -Unique)
+          if ($testFiles.Count -ne 1000) { throw "Documenti di collaudo: attesi 1000, trovati $($testFiles.Count)" }
+          if ($testDirectories.Count -lt 100) { throw "Alberatura di collaudo insufficiente: $($testDirectories.Count) cartelle" }
+          if ($testExtensions.Count -lt 30) { throw "Formati di collaudo insufficienti: $($testExtensions.Count)" }
+          $oldestYear = ($testFiles | Sort-Object LastWriteTimeUtc | Select-Object -First 1).LastWriteTimeUtc.Year
+          $newestYear = ($testFiles | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1).LastWriteTimeUtc.Year
+          if ($oldestYear -gt 2019 -or $newestYear -lt 2025) {
+            throw "Intervallo date di collaudo insufficiente: $oldestYear-$newestYear"
           }
 
           "zip=$($zip.FullName)" >> $env:GITHUB_OUTPUT

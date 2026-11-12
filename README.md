@@ -107,3 +107,13 @@ rimuove solo le cartelle create dallo spostamento rimaste vuote. Per sicurezza
 non sovrascrive file ricreati nel percorso originale e non ripristina file che
 risultano modificati dopo il Move. I report Move prodotti dalle versioni
 precedenti non sono utilizzabili per il ripristino.
+
+Il pacchetto Windows include sempre anche:
+
+- `CartellaCollaudo_Sorgente`, con 1000 documenti segnaposto di oltre 30 formati,
+  date distribuite fra il 2018 e il 2026 e un'alberatura ampia;
+- `CartellaCollaudo_Destinazione`, pronta per le prove di Move;
+- `LEGGIMI_COLLAUDO.txt`, con la procedura di prova.
+
+I file sono rigenerati in modo deterministico a ogni build e servono esclusivamente
+per collaudare scansione, filtri, Move e ripristino.
