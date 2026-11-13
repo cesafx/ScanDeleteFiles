@@ -14,8 +14,6 @@ import it.scandeletefiles.application.OperationResult;
 import it.scandeletefiles.application.OperationStatus;
 import it.scandeletefiles.application.PermanentDeletionConfirmation;
 import it.scandeletefiles.application.ScanMetadata;
-import it.scandeletefiles.application.move.MoveUndoApplicationService;
-import it.scandeletefiles.application.move.MoveUndoCommand;
 import it.scandeletefiles.navigation.AppScreen;
 import it.scandeletefiles.platform.PathChooserAdapter;
 import java.io.File;
@@ -40,7 +38,6 @@ import javafx.stage.Window;
 public final class DeletionView implements ScreenView {
 
     private final DeletionApplicationService deletionService;
-    private final MoveUndoApplicationService moveUndoService;
     private final PermanentDeletionConfirmation permanentDeletionConfirmation;
     private final PathChooserAdapter pathChooser;
 
@@ -49,7 +46,6 @@ public final class DeletionView implements ScreenView {
     private RadioButton trashMode;
     private RadioButton permanentMode;
     private RadioButton moveMode;
-    private RadioButton undoMode;
     private TextField destination;
     private Button chooseDestination;
     private HBox destinationRow;
@@ -65,35 +61,21 @@ public final class DeletionView implements ScreenView {
     private boolean operationRunning;
 
     public DeletionView(DeletionApplicationService deletionService) {
-        this(deletionService, unsupportedUndoService(), DeletionView::showPermanentDeletionConfirmation, null);
+        this(deletionService, DeletionView::showPermanentDeletionConfirmation, null);
     }
 
     DeletionView(DeletionApplicationService deletionService,
                  PermanentDeletionConfirmation permanentDeletionConfirmation) {
-        this(deletionService, unsupportedUndoService(), permanentDeletionConfirmation, null);
+        this(deletionService, permanentDeletionConfirmation, null);
     }
 
     public DeletionView(DeletionApplicationService deletionService,
-                        PermanentDeletionConfirmation permanentDeletionConfirmation,
-                        PathChooserAdapter pathChooser) {
-        this(deletionService, unsupportedUndoService(), permanentDeletionConfirmation, pathChooser);
-    }
-
-    public DeletionView(DeletionApplicationService deletionService,
-                        MoveUndoApplicationService moveUndoService,
-                        PermanentDeletionConfirmation permanentDeletionConfirmation,
-                        PathChooserAdapter pathChooser) {
+                 PermanentDeletionConfirmation permanentDeletionConfirmation,
+                 PathChooserAdapter pathChooser) {
         this.deletionService = Objects.requireNonNull(deletionService, "deletionService");
-        this.moveUndoService = Objects.requireNonNull(moveUndoService, "moveUndoService");
         this.permanentDeletionConfirmation = permanentDeletionConfirmation != null
                 ? permanentDeletionConfirmation : DeletionView::showPermanentDeletionConfirmation;
         this.pathChooser = pathChooser;
-    }
-
-    private static MoveUndoApplicationService unsupportedUndoService() {
-        return (command, observer) -> {
-            throw new IllegalStateException("Servizio di ripristino Move non configurato");
-        };
     }
 
     @Override
@@ -119,9 +101,6 @@ public final class DeletionView implements ScreenView {
         moveMode.setId("move-deletion-mode");
         moveMode.setToggleGroup(mode);
         moveMode.setSelected(true);
-        undoMode = new RadioButton("Ripristina uno spostamento");
-        undoMode.setId("undo-move-mode");
-        undoMode.setToggleGroup(mode);
 
         sourceRoot = new TextField();
         sourceRoot.setId("move-source-root");
@@ -143,7 +122,7 @@ public final class DeletionView implements ScreenView {
         sourceRootSection = section("Root originale", sourceRootRow);
         destinationSection = section("Destinazione", destinationRow);
 
-        VBox modes = new VBox(10, moveMode, trashMode, permanentMode, undoMode,
+        VBox modes = new VBox(10, moveMode, trashMode, permanentMode,
                 sourceRootSection, destinationSection);
         modes.getStyleClass().add("choice-panel");
 
@@ -171,10 +150,10 @@ public final class DeletionView implements ScreenView {
         sourceRoot.textProperty().addListener((observable, oldValue, newValue) -> validate());
         destination.textProperty().addListener((observable, oldValue, newValue) -> validate());
         mode.selectedToggleProperty().addListener((observable, oldValue, newValue) -> {
-            updateModeState();
+            updateDestinationState();
             validate();
         });
-        updateModeState();
+        updateDestinationState();
 
         content.getChildren().addAll(
                 section("File CSV da elaborare", manifestRow),
@@ -184,24 +163,10 @@ public final class DeletionView implements ScreenView {
     }
 
     private void chooseManifest() {
-        Path current = ViewSupport.pathOrNull(manifest.getText().trim());
-        if (pathChooser != null) {
-            var selected = undoMode.isSelected()
-                    ? pathChooser.chooseMoveUndoJournal(current)
-                    : pathChooser.chooseCsvFile(current);
-            selected.ifPresent(path -> manifest.setText(path.toString()));
-            return;
-        }
         FileChooser chooser = new FileChooser();
-        if (undoMode.isSelected()) {
-            chooser.setTitle("Scegli il registro di ripristino Move");
-            chooser.getExtensionFilters().add(
-                    new FileChooser.ExtensionFilter("Registro Move (*.undo.csv)", "*.undo.csv"));
-        } else {
-            chooser.setTitle("Scegli il file CSV da elaborare");
-            chooser.getExtensionFilters().add(
-                    new FileChooser.ExtensionFilter("File CSV (*.csv)", "*.csv"));
-        }
+        chooser.setTitle("Scegli il file CSV da elaborare");
+        chooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("File CSV (*.csv)", "*.csv"));
         Window owner = chooseManifest.getScene() == null ? null : chooseManifest.getScene().getWindow();
         File selected = chooser.showOpenDialog(owner);
         if (selected != null) {
@@ -217,20 +182,16 @@ public final class DeletionView implements ScreenView {
         action.setDisable(operationRunning || !ready);
     }
 
-    private void updateModeState() {
-        boolean moveEnabled = moveMode.isSelected() && !operationRunning;
-        destination.setDisable(!moveEnabled);
-        chooseDestination.setDisable(!moveEnabled);
-        sourceRoot.setDisable(!moveEnabled);
-        chooseSourceRoot.setDisable(!moveEnabled);
+    private void updateDestinationState() {
+        boolean enabled = moveMode.isSelected() && !operationRunning;
+        destination.setDisable(!enabled);
+        chooseDestination.setDisable(!enabled);
+        sourceRoot.setDisable(!enabled);
+        chooseSourceRoot.setDisable(!enabled);
         sourceRootSection.setVisible(moveMode.isSelected());
         sourceRootSection.setManaged(moveMode.isSelected());
         destinationSection.setVisible(moveMode.isSelected());
         destinationSection.setManaged(moveMode.isSelected());
-        manifest.setPromptText(undoMode.isSelected()
-                ? "Registro moving_*.undo.csv" : "File CSV revisionato");
-        chooseManifest.setText(undoMode.isSelected() ? "Scegli registro" : "Scegli CSV");
-        action.setText(undoMode.isSelected() ? "Ripristina spostamento" : AppScreen.DELETE.actionLabel());
     }
 
     private void updateOperationControls() {
@@ -239,10 +200,9 @@ public final class DeletionView implements ScreenView {
         trashMode.setDisable(operationRunning);
         permanentMode.setDisable(operationRunning);
         moveMode.setDisable(operationRunning);
-        undoMode.setDisable(operationRunning);
         sourceRoot.setDisable(operationRunning || !moveMode.isSelected());
         chooseSourceRoot.setDisable(operationRunning || !moveMode.isSelected());
-        updateModeState();
+        updateDestinationState();
         validate();
     }
 
@@ -276,23 +236,6 @@ public final class DeletionView implements ScreenView {
     }
 
     private void startDeletion() {
-        Path manifestPath = ViewSupport.pathOrNull(manifest.getText().trim());
-        if (manifestPath == null) {
-            status.setText("File non valido: controlla il percorso digitato");
-            return;
-        }
-        if (undoMode.isSelected()) {
-            String journalName = manifestPath.getFileName().toString()
-                    .toLowerCase(java.util.Locale.ROOT);
-            boolean validJournalName = journalName.equals("moving.undo.csv")
-                    || journalName.startsWith("moving_") && journalName.endsWith(".undo.csv");
-            if (!validJournalName) {
-                status.setText("Seleziona un registro moving.undo.csv o moving_*.undo.csv");
-                return;
-            }
-            startOperation(observer -> moveUndoService.start(new MoveUndoCommand(manifestPath), observer));
-            return;
-        }
         DeletionMode mode;
         boolean confirmed = false;
         Path destinationPath = null;
@@ -320,12 +263,14 @@ public final class DeletionView implements ScreenView {
                 return;
             }
         }
+        Path manifestPath = ViewSupport.pathOrNull(manifest.getText().trim());
+        if (manifestPath == null) {
+            status.setText("File CSV non valido: controlla il percorso digitato");
+            return;
+        }
         DeletionCommand command = new DeletionCommand(
                 manifestPath, mode, confirmed, destinationPath, sourceRootPath);
-        startOperation(observer -> deletionService.start(command, observer));
-    }
 
-    private void startOperation(OperationStarter starter) {
         currentOperation = null;
         operationRunning = true;
         updateOperationControls();
@@ -348,12 +293,7 @@ public final class DeletionView implements ScreenView {
             }
         });
 
-        currentOperation = new CancellableState(starter.start(ui));
-    }
-
-    @FunctionalInterface
-    private interface OperationStarter {
-        it.scandeletefiles.application.CancellableOperation start(OperationObserver observer);
+        currentOperation = new CancellableState(deletionService.start(command, ui));
     }
 
     private static PermanentDeletionConfirmation.Result showPermanentDeletionConfirmation(String warning) {

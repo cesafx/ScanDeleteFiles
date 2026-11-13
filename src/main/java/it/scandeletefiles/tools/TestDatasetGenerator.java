@@ -121,15 +121,13 @@ public final class TestDatasetGenerator {
                 CartellaCollaudo_Sorgente contiene esattamente 1000 documenti segnaposto,
                 distribuiti in un'alberatura deterministica con numerosi formati e date comprese
                 fra il 2018 e il 2026. I contenuti sono segnaposto: servono a collaudare scansione,
-                filtri, CSV, Move e ripristino, non ad aprire i file nelle applicazioni Office.
+                filtri, CSV e Move, non ad aprire i file nelle applicazioni Office.
 
                 Collaudo consigliato:
                 1. usare CartellaCollaudo_Sorgente come root della scansione;
                 2. scegliere una data soglia e i formati desiderati;
                 3. usare CartellaCollaudo_Destinazione per il Move;
-                4. usare il file moving_*.undo.csv per provare Ripristina uno spostamento.
-
-                Per ricominciare da zero, estrarre nuovamente il pacchetto ZIP.
+                4. per ricominciare da zero, estrarre nuovamente il pacchetto ZIP.
                 """;
     }
 }

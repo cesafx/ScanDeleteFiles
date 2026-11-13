@@ -8,12 +8,4 @@ public interface PathChooserAdapter {
     Optional<Path> chooseDirectory(Path initialDirectory);
 
     Optional<Path> chooseCsvDestination(Path proposedDestination);
-
-    default Optional<Path> chooseCsvFile(Path initialPath) {
-        return Optional.empty();
-    }
-
-    default Optional<Path> chooseMoveUndoJournal(Path initialPath) {
-        return Optional.empty();
-    }
 }

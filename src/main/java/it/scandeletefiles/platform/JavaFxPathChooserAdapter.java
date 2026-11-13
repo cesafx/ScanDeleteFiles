@@ -1,7 +1,6 @@
 package it.scandeletefiles.platform;
 
 import java.io.File;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import javafx.stage.DirectoryChooser;
@@ -37,32 +36,6 @@ public final class JavaFxPathChooserAdapter implements PathChooserAdapter {
         }
         File selected = chooser.showSaveDialog(null);
         return selected == null ? Optional.empty() : Optional.of(withCsvExtension(selected.toPath()));
-    }
-
-    @Override
-    public Optional<Path> chooseCsvFile(Path initialPath) {
-        return chooseOpenFile("Scegli il file CSV da elaborare", "File CSV (*.csv)", "*.csv", initialPath);
-    }
-
-    @Override
-    public Optional<Path> chooseMoveUndoJournal(Path initialPath) {
-        return chooseOpenFile("Scegli il registro di ripristino Move",
-                "Registro Move (*.undo.csv)", "*.undo.csv", initialPath);
-    }
-
-    private static Optional<Path> chooseOpenFile(String title, String description, String pattern,
-                                                 Path initialPath) {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle(title);
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(description, pattern));
-        if (initialPath != null) {
-            Path parent = Files.isDirectory(initialPath) ? initialPath : initialPath.getParent();
-            if (parent != null && parent.toFile().isDirectory()) {
-                chooser.setInitialDirectory(parent.toFile());
-            }
-        }
-        File selected = chooser.showOpenDialog(null);
-        return selected == null ? Optional.empty() : Optional.of(selected.toPath());
     }
 
     private static Path withCsvExtension(Path selected) {
