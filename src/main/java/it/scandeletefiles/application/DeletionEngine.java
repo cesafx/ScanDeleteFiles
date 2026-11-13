@@ -372,6 +372,10 @@ public final class DeletionEngine implements DeletionApplicationService {
                         Path uniqueTarget = uniqueDestination(target);
                         Files.move(sourceFile, uniqueTarget);
                         context.spostati++;
+                        // Ripristina immediatamente il timestamp delle directory di destinazione
+                        // coinvolte, per evitare che rimanga il timestamp di creazione
+                        // impostato da Files.createDirectories o aggiornato da Files.move.
+                        restoreDestinationDirectoryTree(context, uniqueTarget.getParent(), targetRoot);
                         try {
                             Files.setLastModifiedTime(uniqueTarget, fileTimestamp);
                         } catch (IOException timestampError) {
@@ -633,6 +637,21 @@ public final class DeletionEngine implements DeletionApplicationService {
                     context.destinationDirectoryTimes.put(destinationDirectory, finalTimestamp);
                 }
                 if (current.equals(sourceRoot)) {
+                    break;
+                }
+                current = current.getParent();
+            }
+        }
+
+        private void restoreDestinationDirectoryTree(DeletionContext context, Path directory,
+                                                     Path targetRoot) throws IOException {
+            Path current = directory;
+            while (current != null && current.startsWith(targetRoot)) {
+                FileTime timestamp = context.destinationDirectoryTimes.get(current);
+                if (timestamp != null) {
+                    directoryTimeRestorer.restore(current, timestamp);
+                }
+                if (current.equals(targetRoot)) {
                     break;
                 }
                 current = current.getParent();

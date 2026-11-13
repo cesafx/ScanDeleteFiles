@@ -49,10 +49,6 @@ public final class DeletionView implements ScreenView {
     private TextField destination;
     private Button chooseDestination;
     private HBox destinationRow;
-    private TextField sourceRoot;
-    private Button chooseSourceRoot;
-    private HBox sourceRootRow;
-    private Parent sourceRootSection;
     private Parent destinationSection;
     private Button action;
     private Button cancel;
@@ -102,15 +98,6 @@ public final class DeletionView implements ScreenView {
         moveMode.setToggleGroup(mode);
         moveMode.setSelected(true);
 
-        sourceRoot = new TextField();
-        sourceRoot.setId("move-source-root");
-        sourceRoot.setPromptText("Root originale della scansione");
-        chooseSourceRoot = new Button("Scegli root");
-        chooseSourceRoot.setId("choose-move-source-root");
-        chooseSourceRoot.setOnAction(event -> chooseDirectory(sourceRoot,
-                "Scegli la cartella root originale"));
-        sourceRootRow = fieldRow(sourceRoot, chooseSourceRoot);
-
         destination = new TextField();
         destination.setId("move-destination");
         destination.setPromptText("Cartella di destinazione");
@@ -119,11 +106,10 @@ public final class DeletionView implements ScreenView {
         chooseDestination.setOnAction(event -> chooseDirectory(destination,
                 "Scegli la cartella di destinazione"));
         destinationRow = fieldRow(destination, chooseDestination);
-        sourceRootSection = section("Root originale", sourceRootRow);
         destinationSection = section("Destinazione", destinationRow);
 
         VBox modes = new VBox(10, moveMode, trashMode, permanentMode,
-                sourceRootSection, destinationSection);
+                destinationSection);
         modes.getStyleClass().add("choice-panel");
 
         action = new Button(AppScreen.DELETE.actionLabel());
@@ -143,11 +129,7 @@ public final class DeletionView implements ScreenView {
         status = new Label();
         status.setId("deletion-status");
 
-        manifest.textProperty().addListener((observable, oldValue, newValue) -> {
-            loadSourceRoot(newValue);
-            validate();
-        });
-        sourceRoot.textProperty().addListener((observable, oldValue, newValue) -> validate());
+        manifest.textProperty().addListener((observable, oldValue, newValue) -> validate());
         destination.textProperty().addListener((observable, oldValue, newValue) -> validate());
         mode.selectedToggleProperty().addListener((observable, oldValue, newValue) -> {
             updateDestinationState();
@@ -177,7 +159,7 @@ public final class DeletionView implements ScreenView {
     private void validate() {
         boolean ready = !manifest.getText().isBlank();
         if (ready && moveMode.isSelected()) {
-            ready = !sourceRoot.getText().isBlank() && !destination.getText().isBlank();
+            ready = !destination.getText().isBlank();
         }
         action.setDisable(operationRunning || !ready);
     }
@@ -186,10 +168,6 @@ public final class DeletionView implements ScreenView {
         boolean enabled = moveMode.isSelected() && !operationRunning;
         destination.setDisable(!enabled);
         chooseDestination.setDisable(!enabled);
-        sourceRoot.setDisable(!enabled);
-        chooseSourceRoot.setDisable(!enabled);
-        sourceRootSection.setVisible(moveMode.isSelected());
-        sourceRootSection.setManaged(moveMode.isSelected());
         destinationSection.setVisible(moveMode.isSelected());
         destinationSection.setManaged(moveMode.isSelected());
     }
@@ -200,19 +178,8 @@ public final class DeletionView implements ScreenView {
         trashMode.setDisable(operationRunning);
         permanentMode.setDisable(operationRunning);
         moveMode.setDisable(operationRunning);
-        sourceRoot.setDisable(operationRunning || !moveMode.isSelected());
-        chooseSourceRoot.setDisable(operationRunning || !moveMode.isSelected());
         updateDestinationState();
         validate();
-    }
-
-    private void loadSourceRoot(String csvValue) {
-        sourceRoot.clear();
-        Path csv = ViewSupport.pathOrNull(csvValue);
-        if (csv == null) {
-            return;
-        }
-        ScanMetadata.readRoot(csv).ifPresent(root -> sourceRoot.setText(root.toString()));
     }
 
     private void chooseDirectory(TextField field, String title) {
@@ -239,7 +206,6 @@ public final class DeletionView implements ScreenView {
         DeletionMode mode;
         boolean confirmed = false;
         Path destinationPath = null;
-        Path sourceRootPath = null;
         if (trashMode.isSelected()) {
             mode = DeletionMode.TRASH;
         } else if (permanentMode.isSelected()) {
@@ -252,11 +218,6 @@ public final class DeletionView implements ScreenView {
             }
         } else {
             mode = DeletionMode.MOVE_TO_FOLDER;
-            sourceRootPath = ViewSupport.pathOrNull(sourceRoot.getText().trim());
-            if (sourceRootPath == null) {
-                status.setText("Root originale non valida: controlla il percorso digitato");
-                return;
-            }
             destinationPath = ViewSupport.pathOrNull(destination.getText().trim());
             if (destinationPath == null) {
                 status.setText("Cartella di destinazione non valida: controlla il percorso digitato");
@@ -268,8 +229,15 @@ public final class DeletionView implements ScreenView {
             status.setText("File CSV non valido: controlla il percorso digitato");
             return;
         }
-        DeletionCommand command = new DeletionCommand(
-                manifestPath, mode, confirmed, destinationPath, sourceRootPath);
+        // La root originale viene recuperata automaticamente dai metadati della scansione
+        // (sidecar .meta.json o riga "Cartella analizzata:" nel log), senza chiedere all'utente.
+        Path sourceRootPath = ScanMetadata.readRoot(manifestPath).orElse(null);
+        DeletionCommand command;
+        if (sourceRootPath != null) {
+            command = new DeletionCommand(manifestPath, mode, confirmed, destinationPath, sourceRootPath);
+        } else {
+            command = new DeletionCommand(manifestPath, mode, confirmed, destinationPath);
+        }
 
         currentOperation = null;
         operationRunning = true;

@@ -108,7 +108,9 @@ public final class ScanView implements ScreenView {
 
         includeHidden = new CheckBox("Includi file nascosti");
         scanAllFiles = new CheckBox("Scansiona tutti i file (ignora filtri formati)");
-        scanAllFiles.setSelected(false);
+        scanAllFiles.setSelected(true);
+        extensions.setVisible(false);
+        extensions.setManaged(false);
         destination = new TextField();
         destination.setId("scan-destination");
         destination.setPromptText("Posizione e nome del file CSV");
@@ -141,6 +143,11 @@ public final class ScanView implements ScreenView {
         });
         threshold.valueProperty().addListener((observable, previousValue, newValue) -> validate());
         destination.textProperty().addListener((observable, previousValue, newValue) -> validate());
+        scanAllFiles.selectedProperty().addListener((observable, previousValue, newValue) -> {
+            boolean showExtensions = !newValue;
+            extensions.setVisible(showExtensions);
+            extensions.setManaged(showExtensions);
+        });
 
         content.getChildren().addAll(
                 section("Cartella da analizzare", rootRow),
